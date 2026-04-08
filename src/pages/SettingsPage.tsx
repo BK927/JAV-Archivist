@@ -87,8 +87,8 @@ export default function SettingsPage() {
         <Label className="text-sm font-medium">외부 플레이어 경로</Label>
         <Input
           className="text-sm h-8 bg-secondary border-border"
-          value={settings.playerPath}
-          onChange={(e) => save({ ...settings, playerPath: e.target.value })}
+          value={settings.playerPath ?? ''}
+          onChange={(e) => save({ ...settings, playerPath: e.target.value || null })}
           placeholder="C:/Program Files/mpv/mpv.exe"
         />
       </section>

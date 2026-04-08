@@ -3,7 +3,7 @@ import { Play, Pause, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface InAppPlayerProps {
-  filePath: string
+  filePath: string | undefined
   onClose: () => void
 }
 
@@ -22,9 +22,10 @@ export default function InAppPlayer({ filePath, onClose }: InAppPlayerProps) {
   }
 
   // Tauri env: asset:// protocol; browser dev: empty src (video won't load, that's OK for mock)
-  const isTauriEnv = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
-  const src = isTauriEnv
-    ? `asset://localhost/${filePath.replace(/\\/g, '/')}`
+  const src = filePath
+    ? (window as any).__TAURI_INTERNALS__
+      ? `asset://localhost/${filePath.replace(/\\/g, '/')}`
+      : ''
     : ''
 
   return (

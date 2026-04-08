@@ -25,7 +25,7 @@ export default function VideoDetail({ video, onClose }: VideoDetailProps) {
   const { videos, setVideos } = useLibraryStore()
 
   const handleExternalPlay = async () => {
-    await run('open_with_player', { filePath: video.filePath }, undefined)
+    await run('open_with_player', { filePath: video.files[0]?.path ?? '' }, undefined)
     const updated = videos.map((v) =>
       v.id === video.id ? { ...v, watched: true } : v
     )
@@ -81,7 +81,7 @@ export default function VideoDetail({ video, onClose }: VideoDetailProps) {
             {video.releasedAt && (
               <p><span className="text-foreground">출시일</span>: {video.releasedAt}</p>
             )}
-            <p><span className="text-foreground">재생시간</span>: {formatDuration(video.duration)}</p>
+            <p><span className="text-foreground">재생시간</span>: {video.duration != null ? formatDuration(video.duration) : '-'}</p>
           </div>
 
           {video.tags.length > 0 && (
@@ -127,7 +127,7 @@ export default function VideoDetail({ video, onClose }: VideoDetailProps) {
       {/* 인앱 플레이어 */}
       {showPlayer && (
         <InAppPlayer
-          filePath={video.filePath}
+          filePath={video.files[0]?.path}
           onClose={() => setShowPlayer(false)}
         />
       )}

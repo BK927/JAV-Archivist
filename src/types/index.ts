@@ -1,13 +1,18 @@
+export interface VideoFile {
+  path: string
+  size: number
+}
+
 export interface Video {
   id: string
   code: string            // 품번 (예: "ABC-123")
   title: string
-  filePath: string
+  files: VideoFile[]
   thumbnailPath: string | null
   actors: string[]
   series: string | null
   tags: string[]
-  duration: number        // 초 단위
+  duration: number | null // 초 단위
   watched: boolean
   favorite: boolean
   addedAt: string         // ISO 8601
@@ -38,5 +43,5 @@ export interface FilterState {
 
 export interface AppSettings {
   scanFolders: string[]
-  playerPath: string
+  playerPath: string | null
 }
