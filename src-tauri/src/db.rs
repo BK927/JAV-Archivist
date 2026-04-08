@@ -1,4 +1,5 @@
 use rusqlite::{Connection, Result};
+use crate::models::Settings;
 
 pub fn open(path: &str) -> Result<Connection> {
     Connection::open(path)
@@ -62,9 +63,51 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     )
 }
 
+pub fn get_settings(conn: &Connection) -> Result<Settings> {
+    let scan_folders_json: String = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'scan_folders'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or_else(|_| "[]".to_string());
+
+    let player_path: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'player_path'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+        .filter(|v| !v.is_empty());
+
+    Ok(Settings {
+        scan_folders: serde_json::from_str(&scan_folders_json).unwrap_or_default(),
+        player_path,
+    })
+}
+
+pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<()> {
+    let folders_json = serde_json::to_string(&settings.scan_folders)
+        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('scan_folders', ?1)",
+        [&folders_json],
+    )?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('player_path', ?1)",
+        [settings.player_path.as_deref().unwrap_or("")],
+    )?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::Settings;
 
     #[test]
     fn test_init_db_creates_tables() {
@@ -93,5 +136,53 @@ mod tests {
         let conn = open_in_memory().unwrap();
         init_db(&conn).unwrap();
         init_db(&conn).unwrap(); // second call should not error
+    }
+
+    #[test]
+    fn test_get_settings_defaults() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let settings = get_settings(&conn).unwrap();
+        assert!(settings.scan_folders.is_empty());
+        assert!(settings.player_path.is_none());
+    }
+
+    #[test]
+    fn test_save_and_get_settings() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let settings = Settings {
+            scan_folders: vec!["C:/Videos".to_string(), "D:/JAV".to_string()],
+            player_path: Some("C:/mpv/mpv.exe".to_string()),
+        };
+        save_settings(&conn, &settings).unwrap();
+
+        let loaded = get_settings(&conn).unwrap();
+        assert_eq!(loaded.scan_folders, vec!["C:/Videos", "D:/JAV"]);
+        assert_eq!(loaded.player_path, Some("C:/mpv/mpv.exe".to_string()));
+    }
+
+    #[test]
+    fn test_save_settings_overwrites() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let s1 = Settings {
+            scan_folders: vec!["C:/Old".to_string()],
+            player_path: Some("old.exe".to_string()),
+        };
+        save_settings(&conn, &s1).unwrap();
+
+        let s2 = Settings {
+            scan_folders: vec!["C:/New".to_string()],
+            player_path: None,
+        };
+        save_settings(&conn, &s2).unwrap();
+
+        let loaded = get_settings(&conn).unwrap();
+        assert_eq!(loaded.scan_folders, vec!["C:/New"]);
+        assert!(loaded.player_path.is_none());
     }
 }
