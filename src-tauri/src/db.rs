@@ -6,6 +6,7 @@ pub fn open(path: &str) -> Result<Connection> {
     Connection::open(path)
 }
 
+#[cfg(test)]
 pub fn open_in_memory() -> Result<Connection> {
     Connection::open_in_memory()
 }
@@ -106,6 +107,17 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<()> {
 }
 
 pub fn upsert_videos(conn: &Connection, videos: &[Video]) -> Result<()> {
+    conn.execute_batch("BEGIN")?;
+    let result = upsert_videos_inner(conn, videos);
+    if result.is_ok() {
+        conn.execute_batch("COMMIT")?;
+    } else {
+        let _ = conn.execute_batch("ROLLBACK");
+    }
+    result
+}
+
+fn upsert_videos_inner(conn: &Connection, videos: &[Video]) -> Result<()> {
     for video in videos {
         let existing_id: Option<String> = if video.code != "?" {
             conn.query_row(

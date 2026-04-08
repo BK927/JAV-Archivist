@@ -1,23 +1,30 @@
 use regex::Regex;
 use std::collections::HashMap;
+use std::sync::LazyLock;
 use walkdir::WalkDir;
 use uuid::Uuid;
 use chrono::Utc;
 use crate::models::{Video, VideoFile};
 
+static FC2_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)FC2[-\s]?PPV[-\s]?(\d+)").unwrap()
+});
+
+static GENERAL_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)([A-Z]{2,6})-(\d{3,5})").unwrap()
+});
+
 /// Extract a video code from a text string (filename or folder name).
 /// Returns the normalized code or None if no pattern matches.
 pub fn extract_code(text: &str) -> Option<String> {
     // FC2 pattern: FC2-PPV-123, FC2PPV 123, FC2PPV123, etc.
-    let fc2_re = Regex::new(r"(?i)FC2[-\s]?PPV[-\s]?(\d+)").unwrap();
-    if let Some(caps) = fc2_re.captures(text) {
+    if let Some(caps) = FC2_RE.captures(text) {
         let digits = &caps[1];
         return Some(format!("FC2-PPV-{}", digits));
     }
 
     // General pattern: ABC-123, ABCD-12345
-    let general_re = Regex::new(r"(?i)([A-Z]{2,6})-(\d{3,5})").unwrap();
-    if let Some(caps) = general_re.captures(text) {
+    if let Some(caps) = GENERAL_RE.captures(text) {
         let prefix = caps[1].to_uppercase();
         let number = &caps[2];
         return Some(format!("{}-{}", prefix, number));
