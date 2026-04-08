@@ -1,4 +1,9 @@
 use regex::Regex;
+use std::collections::HashMap;
+use walkdir::WalkDir;
+use uuid::Uuid;
+use chrono::Utc;
+use crate::models::{Video, VideoFile};
 
 /// Extract a video code from a text string (filename or folder name).
 /// Returns the normalized code or None if no pattern matches.
@@ -21,9 +26,134 @@ pub fn extract_code(text: &str) -> Option<String> {
     None
 }
 
+const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "avi", "wmv", "flv", "mov", "ts", "m4v"];
+
+struct ScannedFile {
+    path: String,
+    size: u64,
+    code: String,
+    filename: String,
+}
+
+pub fn scan_folders(folders: &[String]) -> Result<Vec<Video>, String> {
+    let mut scanned: Vec<ScannedFile> = Vec::new();
+
+    for folder in folders {
+        for entry in WalkDir::new(folder)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+
+            let ext = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_lowercase())
+                .unwrap_or_default();
+
+            if !VIDEO_EXTENSIONS.contains(&ext.as_str()) {
+                continue;
+            }
+
+            let filename = path
+                .file_stem()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default()
+                .to_string();
+
+            let code = extract_code(&filename)
+                .or_else(|| {
+                    path.parent()
+                        .and_then(|p| p.file_name())
+                        .and_then(|n| n.to_str())
+                        .and_then(extract_code)
+                })
+                .unwrap_or_else(|| "?".to_string());
+
+            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+
+            scanned.push(ScannedFile {
+                path: path.to_string_lossy().to_string(),
+                size,
+                code,
+                filename,
+            });
+        }
+    }
+
+    Ok(group_by_code(scanned))
+}
+
+fn group_by_code(files: Vec<ScannedFile>) -> Vec<Video> {
+    let mut groups: HashMap<String, Vec<ScannedFile>> = HashMap::new();
+    let mut unknown: Vec<Video> = Vec::new();
+    let now = Utc::now().to_rfc3339();
+
+    for file in files {
+        if file.code == "?" {
+            unknown.push(Video {
+                id: Uuid::new_v4().to_string(),
+                code: "?".to_string(),
+                title: file.filename.clone(),
+                files: vec![VideoFile {
+                    path: file.path,
+                    size: file.size,
+                }],
+                thumbnail_path: None,
+                actors: vec![],
+                series: None,
+                tags: vec![],
+                duration: None,
+                watched: false,
+                favorite: false,
+                added_at: now.clone(),
+                released_at: None,
+            });
+        } else {
+            groups.entry(file.code.clone()).or_default().push(file);
+        }
+    }
+
+    let mut videos: Vec<Video> = groups
+        .into_iter()
+        .map(|(code, files)| {
+            let title = files[0].filename.clone();
+            Video {
+                id: Uuid::new_v4().to_string(),
+                code,
+                title,
+                files: files
+                    .into_iter()
+                    .map(|f| VideoFile {
+                        path: f.path,
+                        size: f.size,
+                    })
+                    .collect(),
+                thumbnail_path: None,
+                actors: vec![],
+                series: None,
+                tags: vec![],
+                duration: None,
+                watched: false,
+                favorite: false,
+                added_at: now.clone(),
+                released_at: None,
+            }
+        })
+        .collect();
+
+    videos.extend(unknown);
+    videos
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::TempDir;
+    use std::fs;
 
     #[test]
     fn test_general_code() {
@@ -99,5 +229,73 @@ mod tests {
         assert_eq!(extract_code("random_video"), None);
         assert_eq!(extract_code("video_20240301"), None);
         assert_eq!(extract_code(""), None);
+    }
+
+    #[test]
+    fn test_scan_empty_folder() {
+        let dir = TempDir::new().unwrap();
+        let result = scan_folders(&[dir.path().to_string_lossy().to_string()]).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_scan_finds_video_files() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("ABC-123.mp4"), "fake").unwrap();
+        fs::write(dir.path().join("DEF-456.mkv"), "fake").unwrap();
+        fs::write(dir.path().join("readme.txt"), "not a video").unwrap();
+
+        let result = scan_folders(&[dir.path().to_string_lossy().to_string()]).unwrap();
+        assert_eq!(result.len(), 2);
+
+        let codes: Vec<&str> = result.iter().map(|v| v.code.as_str()).collect();
+        assert!(codes.contains(&"ABC-123"));
+        assert!(codes.contains(&"DEF-456"));
+    }
+
+    #[test]
+    fn test_scan_groups_same_code() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("ABC-123.mp4"), "fake").unwrap();
+        fs::write(dir.path().join("ABC-123_part2.mp4"), "fake").unwrap();
+
+        let result = scan_folders(&[dir.path().to_string_lossy().to_string()]).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].code, "ABC-123");
+        assert_eq!(result[0].files.len(), 2);
+    }
+
+    #[test]
+    fn test_scan_extracts_code_from_folder() {
+        let dir = TempDir::new().unwrap();
+        let sub = dir.path().join("ABC-123");
+        fs::create_dir(&sub).unwrap();
+        fs::write(sub.join("video.mp4"), "fake").unwrap();
+
+        let result = scan_folders(&[dir.path().to_string_lossy().to_string()]).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].code, "ABC-123");
+    }
+
+    #[test]
+    fn test_scan_unknown_code() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("random_video.mp4"), "fake").unwrap();
+
+        let result = scan_folders(&[dir.path().to_string_lossy().to_string()]).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].code, "?");
+    }
+
+    #[test]
+    fn test_scan_recursive() {
+        let dir = TempDir::new().unwrap();
+        let sub = dir.path().join("subdir");
+        fs::create_dir(&sub).unwrap();
+        fs::write(sub.join("ABC-123.mp4"), "fake").unwrap();
+
+        let result = scan_folders(&[dir.path().to_string_lossy().to_string()]).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].code, "ABC-123");
     }
 }
