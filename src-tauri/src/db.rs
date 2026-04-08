@@ -1,5 +1,6 @@
-use rusqlite::{Connection, Result};
-use crate::models::Settings;
+use rusqlite::{params, Connection, Result};
+use uuid::Uuid;
+use crate::models::{Settings, Video, VideoFile};
 
 pub fn open(path: &str) -> Result<Connection> {
     Connection::open(path)
@@ -104,10 +105,289 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<()> {
     Ok(())
 }
 
+pub fn upsert_videos(conn: &Connection, videos: &[Video]) -> Result<()> {
+    for video in videos {
+        let existing_id: Option<String> = if video.code != "?" {
+            conn.query_row(
+                "SELECT id FROM videos WHERE code = ?1",
+                [&video.code],
+                |row| row.get(0),
+            )
+            .ok()
+        } else {
+            None
+        };
+
+        let video_id = match existing_id {
+            Some(id) => {
+                // Existing code: update files only, preserve metadata
+                conn.execute("DELETE FROM video_files WHERE video_id = ?1", [&id])?;
+                id
+            }
+            None => {
+                // New video: insert record
+                conn.execute(
+                    "INSERT INTO videos (id, code, title, thumbnail_path, series, duration, watched, favorite, added_at, released_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    params![
+                        video.id,
+                        video.code,
+                        video.title,
+                        video.thumbnail_path,
+                        video.series,
+                        video.duration,
+                        video.watched as i32,
+                        video.favorite as i32,
+                        video.added_at,
+                        video.released_at,
+                    ],
+                )?;
+                video.id.clone()
+            }
+        };
+
+        for file in &video.files {
+            let file_id = Uuid::new_v4().to_string();
+            conn.execute(
+                "INSERT OR REPLACE INTO video_files (id, video_id, path, size) VALUES (?1, ?2, ?3, ?4)",
+                params![file_id, video_id, file.path, file.size as i64],
+            )?;
+        }
+    }
+    Ok(())
+}
+
+pub fn get_all_videos(conn: &Connection) -> Result<Vec<Video>> {
+    let mut stmt = conn.prepare("SELECT id, code, title, thumbnail_path, series, duration, watched, favorite, added_at, released_at FROM videos ORDER BY added_at DESC")?;
+    let video_rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, Option<String>>(4)?,
+            row.get::<_, Option<u64>>(5)?,
+            row.get::<_, i32>(6)?,
+            row.get::<_, i32>(7)?,
+            row.get::<_, String>(8)?,
+            row.get::<_, Option<String>>(9)?,
+        ))
+    })?;
+
+    let mut videos = Vec::new();
+    for row in video_rows {
+        let (id, code, title, thumbnail_path, series, duration, watched, favorite, added_at, released_at) = row?;
+        let files = get_video_files(conn, &id)?;
+        let actors = get_video_actors(conn, &id)?;
+        let tags = get_video_tags(conn, &id)?;
+
+        videos.push(Video {
+            id, code, title, files, thumbnail_path, actors, series, tags, duration,
+            watched: watched != 0, favorite: favorite != 0, added_at, released_at,
+        });
+    }
+    Ok(videos)
+}
+
+pub fn get_video_by_id(conn: &Connection, id: &str) -> Result<Video> {
+    let (code, title, thumbnail_path, series, duration, watched, favorite, added_at, released_at) = conn.query_row(
+        "SELECT code, title, thumbnail_path, series, duration, watched, favorite, added_at, released_at FROM videos WHERE id = ?1",
+        [id],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<u64>>(4)?,
+                row.get::<_, i32>(5)?,
+                row.get::<_, i32>(6)?,
+                row.get::<_, String>(7)?,
+                row.get::<_, Option<String>>(8)?,
+            ))
+        },
+    )?;
+
+    let files = get_video_files(conn, id)?;
+    let actors = get_video_actors(conn, id)?;
+    let tags = get_video_tags(conn, id)?;
+
+    Ok(Video {
+        id: id.to_string(), code, title, files, thumbnail_path, actors, series, tags, duration,
+        watched: watched != 0, favorite: favorite != 0, added_at, released_at,
+    })
+}
+
+fn get_video_files(conn: &Connection, video_id: &str) -> Result<Vec<VideoFile>> {
+    let mut stmt = conn.prepare("SELECT path, size FROM video_files WHERE video_id = ?1")?;
+    let files = stmt
+        .query_map([video_id], |row| {
+            Ok(VideoFile {
+                path: row.get(0)?,
+                size: row.get::<_, i64>(1)? as u64,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(files)
+}
+
+fn get_video_actors(conn: &Connection, video_id: &str) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.name FROM actors a JOIN video_actors va ON a.id = va.actor_id WHERE va.video_id = ?1"
+    )?;
+    let actors = stmt
+        .query_map([video_id], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(actors)
+}
+
+fn get_video_tags(conn: &Connection, video_id: &str) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT t.name FROM tags t JOIN video_tags vt ON t.id = vt.tag_id WHERE vt.video_id = ?1"
+    )?;
+    let tags = stmt
+        .query_map([video_id], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(tags)
+}
+
+pub fn set_watched(conn: &Connection, id: &str, watched: bool) -> Result<()> {
+    conn.execute(
+        "UPDATE videos SET watched = ?1 WHERE id = ?2",
+        params![watched as i32, id],
+    )?;
+    Ok(())
+}
+
+pub fn set_favorite(conn: &Connection, id: &str, favorite: bool) -> Result<()> {
+    conn.execute(
+        "UPDATE videos SET favorite = ?1 WHERE id = ?2",
+        params![favorite as i32, id],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::Settings;
+    use crate::models::{Settings, VideoFile};
+
+    fn make_test_video(code: &str, title: &str, path: &str) -> Video {
+        Video {
+            id: uuid::Uuid::new_v4().to_string(),
+            code: code.to_string(),
+            title: title.to_string(),
+            files: vec![VideoFile {
+                path: path.to_string(),
+                size: 1_000_000,
+            }],
+            thumbnail_path: None,
+            actors: vec![],
+            series: None,
+            tags: vec![],
+            duration: None,
+            watched: false,
+            favorite: false,
+            added_at: "2026-04-09T00:00:00Z".to_string(),
+            released_at: None,
+        }
+    }
+
+    #[test]
+    fn test_upsert_and_get_all_videos() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let videos = vec![
+            make_test_video("ABC-123", "Test Video 1", "C:/Videos/ABC-123.mp4"),
+            make_test_video("DEF-456", "Test Video 2", "C:/Videos/DEF-456.mp4"),
+        ];
+        upsert_videos(&conn, &videos).unwrap();
+
+        let all = get_all_videos(&conn).unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].files.len(), 1);
+    }
+
+    #[test]
+    fn test_upsert_existing_code_updates_files_only() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let v1 = vec![make_test_video("ABC-123", "Original Title", "C:/old.mp4")];
+        upsert_videos(&conn, &v1).unwrap();
+
+        let v2 = vec![make_test_video("ABC-123", "New Title", "C:/new.mp4")];
+        upsert_videos(&conn, &v2).unwrap();
+
+        let all = get_all_videos(&conn).unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].title, "Original Title"); // title NOT overwritten
+        assert_eq!(all[0].files[0].path, "C:/new.mp4"); // file IS updated
+    }
+
+    #[test]
+    fn test_unknown_code_not_deduped() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let videos = vec![
+            make_test_video("?", "Unknown 1", "C:/unknown1.mp4"),
+            make_test_video("?", "Unknown 2", "C:/unknown2.mp4"),
+        ];
+        upsert_videos(&conn, &videos).unwrap();
+
+        let all = get_all_videos(&conn).unwrap();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn test_get_video_by_id() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let video = make_test_video("ABC-123", "Test", "C:/test.mp4");
+        let id = video.id.clone();
+        upsert_videos(&conn, &[video]).unwrap();
+
+        let found = get_video_by_id(&conn, &id).unwrap();
+        assert_eq!(found.code, "ABC-123");
+    }
+
+    #[test]
+    fn test_set_watched() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let video = make_test_video("ABC-123", "Test", "C:/test.mp4");
+        let id = video.id.clone();
+        upsert_videos(&conn, &[video]).unwrap();
+
+        set_watched(&conn, &id, true).unwrap();
+        let v = get_video_by_id(&conn, &id).unwrap();
+        assert!(v.watched);
+
+        set_watched(&conn, &id, false).unwrap();
+        let v = get_video_by_id(&conn, &id).unwrap();
+        assert!(!v.watched);
+    }
+
+    #[test]
+    fn test_set_favorite() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let video = make_test_video("ABC-123", "Test", "C:/test.mp4");
+        let id = video.id.clone();
+        upsert_videos(&conn, &[video]).unwrap();
+
+        set_favorite(&conn, &id, true).unwrap();
+        let v = get_video_by_id(&conn, &id).unwrap();
+        assert!(v.favorite);
+    }
 
     #[test]
     fn test_init_db_creates_tables() {
