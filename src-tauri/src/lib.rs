@@ -1,3 +1,8 @@
+mod db;
+mod models;
+mod player;
+mod scanner;
+
 #[tauri::command]
 fn scan_library() -> Vec<serde_json::Value> {
     // TODO: 실제 파일 스캔 구현 (별도 설계)
