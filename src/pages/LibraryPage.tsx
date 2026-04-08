@@ -1,12 +1,49 @@
-import VideoCard from '@/components/library/VideoCard'
+import { useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import FilterBar from '@/components/library/FilterBar'
+import VideoGrid from '@/components/library/VideoGrid'
+import VideoDetail from '@/components/detail/VideoDetail'
+import { useLibraryStore } from '@/stores/libraryStore'
+import { usePlayerStore } from '@/stores/playerStore'
+import { useFilteredVideos } from '@/hooks/useFilteredVideos'
+import { useTauriCommand } from '@/hooks/useTauriCommand'
 import { MOCK_VIDEOS } from '@/lib/mockData'
+import type { Video } from '@/types'
 
 export default function LibraryPage() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  const { videos, filters, searchQuery, setVideos } = useLibraryStore()
+  const { currentVideo, setCurrentVideo } = usePlayerStore()
+  const { run } = useTauriCommand()
+  const filtered = useFilteredVideos(videos, filters, searchQuery)
+
+  useEffect(() => {
+    run<Video[]>('scan_library', {}, MOCK_VIDEOS).then(setVideos)
+  }, [run, setVideos])
+
+  useEffect(() => {
+    if (id) {
+      const found = videos.find((v) => v.id === id)
+      if (found) setCurrentVideo(found)
+    } else {
+      setCurrentVideo(null)
+    }
+  }, [id, videos, setCurrentVideo])
+
+  const handleSelect = (video: Video) => navigate(`/library/${video.id}`)
+  const handleClose = () => navigate('/library')
+
+  if (currentVideo) {
+    return <VideoDetail video={currentVideo} onClose={handleClose} />
+  }
+
   return (
-    <div className="p-6 grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))' }}>
-      {MOCK_VIDEOS.map((v) => (
-        <VideoCard key={v.id} video={v} onClick={(v) => console.log(v.code)} />
-      ))}
+    <div className="flex flex-col h-full">
+      <FilterBar totalCount={filtered.length} />
+      <div className="flex-1 overflow-auto">
+        <VideoGrid videos={filtered} onSelect={handleSelect} />
+      </div>
     </div>
   )
 }
