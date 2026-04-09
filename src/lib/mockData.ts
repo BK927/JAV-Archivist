@@ -15,6 +15,8 @@ export const MOCK_VIDEOS: Video[] = [
     favorite: true,
     addedAt: '2026-03-01T10:00:00Z',
     releasedAt: '2026-01-15',
+    scrapeStatus: 'not_scraped' as const,
+    scrapedAt: null,
   },
   {
     id: '2',
@@ -30,6 +32,8 @@ export const MOCK_VIDEOS: Video[] = [
     favorite: false,
     addedAt: '2026-03-05T12:00:00Z',
     releasedAt: '2026-02-01',
+    scrapeStatus: 'not_scraped' as const,
+    scrapedAt: null,
   },
   {
     id: '3',
@@ -45,6 +49,8 @@ export const MOCK_VIDEOS: Video[] = [
     favorite: true,
     addedAt: '2026-03-10T08:00:00Z',
     releasedAt: '2026-02-20',
+    scrapeStatus: 'not_scraped' as const,
+    scrapedAt: null,
   },
   {
     id: '4',
@@ -60,6 +66,8 @@ export const MOCK_VIDEOS: Video[] = [
     favorite: false,
     addedAt: '2026-03-15T09:00:00Z',
     releasedAt: '2026-03-01',
+    scrapeStatus: 'not_scraped' as const,
+    scrapedAt: null,
   },
   {
     id: '5',
@@ -75,6 +83,8 @@ export const MOCK_VIDEOS: Video[] = [
     favorite: false,
     addedAt: '2026-03-20T14:00:00Z',
     releasedAt: '2026-03-10',
+    scrapeStatus: 'not_scraped' as const,
+    scrapedAt: null,
   },
   {
     id: '6',
@@ -90,6 +100,8 @@ export const MOCK_VIDEOS: Video[] = [
     favorite: false,
     addedAt: '2026-03-25T11:00:00Z',
     releasedAt: '2026-03-15',
+    scrapeStatus: 'not_scraped' as const,
+    scrapedAt: null,
   },
   {
     id: '7',
@@ -105,6 +117,8 @@ export const MOCK_VIDEOS: Video[] = [
     favorite: true,
     addedAt: '2026-04-01T10:00:00Z',
     releasedAt: '2026-03-25',
+    scrapeStatus: 'not_scraped' as const,
+    scrapedAt: null,
   },
   {
     id: '8',
@@ -120,6 +134,8 @@ export const MOCK_VIDEOS: Video[] = [
     favorite: false,
     addedAt: '2026-04-05T09:00:00Z',
     releasedAt: '2026-04-01',
+    scrapeStatus: 'not_scraped' as const,
+    scrapedAt: null,
   },
 ]
 

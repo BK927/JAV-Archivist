@@ -3,6 +3,8 @@ export interface VideoFile {
   size: number
 }
 
+export type ScrapeStatus = 'not_scraped' | 'partial' | 'complete' | 'not_found'
+
 export interface Video {
   id: string
   code: string            // 품번 (예: "ABC-123")
@@ -17,6 +19,8 @@ export interface Video {
   favorite: boolean
   addedAt: string         // ISO 8601
   releasedAt: string | null
+  scrapeStatus: ScrapeStatus
+  scrapedAt: string | null
 }
 
 export interface Actor {
