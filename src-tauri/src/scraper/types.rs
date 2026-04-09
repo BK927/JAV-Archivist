@@ -65,6 +65,7 @@ pub enum MetadataSource {
 }
 
 impl MetadataSource {
+    #[cfg(test)]
     pub fn name(&self) -> &str {
         match self {
             Self::Fc2 => "fc2",

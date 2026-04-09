@@ -5,7 +5,7 @@ pub mod fc2;
 pub mod image;
 
 use std::collections::HashMap;
-pub use types::{ScrapedMetadata, ScrapedActor, ScrapeError, MetadataSource};
+pub use types::{ScrapedMetadata, ScrapeError, MetadataSource};
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -167,6 +167,7 @@ impl ScrapePipeline {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::types::ScrapedActor;
 
     #[test]
     fn test_merge_fills_empty_fields() {

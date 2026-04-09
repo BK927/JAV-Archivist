@@ -1,4 +1,4 @@
-import type { Video, AppSettings } from '@/types'
+import type { Video } from '@/types'
 
 export const MOCK_VIDEOS: Video[] = [
   {
@@ -146,9 +146,3 @@ export const MOCK_VIDEOS: Video[] = [
     makerName: 'Madonna',
   },
 ]
-
-
-export const MOCK_SETTINGS: AppSettings = {
-  scanFolders: ['C:/Videos'],
-  playerPath: 'C:/Program Files/mpv/mpv.exe',
-}

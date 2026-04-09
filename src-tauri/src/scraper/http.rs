@@ -15,6 +15,7 @@ impl RateLimiter {
         }
     }
 
+    #[cfg(test)]
     pub fn current_delay(&self) -> Duration {
         self.current
     }

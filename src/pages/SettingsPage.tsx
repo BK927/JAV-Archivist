@@ -1,22 +1,22 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, RefreshCw } from 'lucide-react'
+import { FolderOpen, Trash2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { useTauriCommand } from '@/hooks/useTauriCommand'
 import { useLibraryStore } from '@/stores/libraryStore'
-import { MOCK_SETTINGS, MOCK_VIDEOS } from '@/lib/mockData'
 import type { AppSettings, Video } from '@/types'
+
+const DEFAULT_SETTINGS: AppSettings = { scanFolders: [], playerPath: null }
 
 export default function SettingsPage() {
   const { run } = useTauriCommand()
   const { setVideos, setScanning, isScanning } = useLibraryStore()
-  const [settings, setSettings] = useState<AppSettings>(MOCK_SETTINGS)
-  const [newFolder, setNewFolder] = useState('')
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
 
   useEffect(() => {
-    run<AppSettings>('get_settings', {}, MOCK_SETTINGS).then(setSettings)
+    run<AppSettings>('get_settings', {}, DEFAULT_SETTINGS).then(setSettings)
   }, [run])
 
   const save = async (updated: AppSettings) => {
@@ -24,10 +24,16 @@ export default function SettingsPage() {
     await run('save_settings', { settings: updated }, undefined)
   }
 
-  const addFolder = () => {
-    if (!newFolder.trim()) return
-    save({ ...settings, scanFolders: [...settings.scanFolders, newFolder.trim()] })
-    setNewFolder('')
+  const addFolder = async () => {
+    try {
+      const { open } = await import('@tauri-apps/plugin-dialog')
+      const selected = await open({ directory: true, title: '스캔 폴더 선택' })
+      if (selected && !settings.scanFolders.includes(selected)) {
+        save({ ...settings, scanFolders: [...settings.scanFolders, selected] })
+      }
+    } catch {
+      // Not in Tauri env
+    }
   }
 
   const removeFolder = (folder: string) => {
@@ -36,7 +42,7 @@ export default function SettingsPage() {
 
   const handleRescan = async () => {
     setScanning(true)
-    const videos = await run<Video[]>('scan_library', {}, MOCK_VIDEOS)
+    const videos = await run<Video[]>('scan_library', {}, [])
     setVideos(videos)
     setScanning(false)
   }
@@ -65,19 +71,10 @@ export default function SettingsPage() {
             </div>
           ))}
         </div>
-        <div className="flex gap-2">
-          <Input
-            className="text-sm h-8 bg-secondary border-border"
-            placeholder="C:/Videos"
-            value={newFolder}
-            onChange={(e) => setNewFolder(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addFolder()}
-          />
-          <Button variant="secondary" size="sm" onClick={addFolder}>
-            <Plus className="w-3.5 h-3.5 mr-1" />
-            추가
-          </Button>
-        </div>
+        <Button variant="secondary" size="sm" onClick={addFolder}>
+          <FolderOpen className="w-3.5 h-3.5 mr-1" />
+          폴더 추가
+        </Button>
       </section>
 
       <Separator />
