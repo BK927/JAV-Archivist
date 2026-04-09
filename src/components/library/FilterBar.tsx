@@ -6,14 +6,33 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Download, X } from 'lucide-react'
 import { useLibraryStore } from '@/stores/libraryStore'
 
 interface FilterBarProps {
   totalCount: number
   tags: string[]
+  unscrapedCount: number
+  isScraping: boolean
+  scrapeProgress: { current: number; total: number } | null
+  onScrapeAll: () => void
+  onCancelScrape: () => void
+  activeFilter: { type: string; value: string } | null
+  onClearFilter: () => void
 }
 
-export default function FilterBar({ totalCount, tags }: FilterBarProps) {
+export default function FilterBar({
+  totalCount,
+  tags,
+  unscrapedCount,
+  isScraping,
+  scrapeProgress,
+  onScrapeAll,
+  onCancelScrape,
+  activeFilter,
+  onClearFilter,
+}: FilterBarProps) {
   const { filters, setFilters } = useLibraryStore()
 
   return (
@@ -85,6 +104,41 @@ export default function FilterBar({ totalCount, tags }: FilterBarProps) {
           {tag}
         </Badge>
       ))}
+
+      {/* 스크래핑 버튼 */}
+      {!isScraping && unscrapedCount > 0 && (
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onScrapeAll}>
+          <Download className="w-3 h-3 mr-1" />
+          메타데이터 수집 ({unscrapedCount})
+        </Button>
+      )}
+
+      {isScraping && scrapeProgress && (
+        <div className="flex items-center gap-2">
+          <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden">
+            <div
+              className="h-full bg-primary transition-all"
+              style={{ width: `${(scrapeProgress.current / scrapeProgress.total) * 100}%` }}
+            />
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {scrapeProgress.current}/{scrapeProgress.total}
+          </span>
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onCancelScrape}>
+            <X className="w-3 h-3" />
+          </Button>
+        </div>
+      )}
+
+      {/* 활성 필터 뱃지 */}
+      {activeFilter && (
+        <Badge variant="default" className="h-7 px-2 text-xs gap-1">
+          {activeFilter.type}: {activeFilter.value}
+          <button onClick={onClearFilter} className="ml-1">
+            <X className="w-3 h-3" />
+          </button>
+        </Badge>
+      )}
 
       <span className="ml-auto text-xs text-muted-foreground">
         {totalCount.toLocaleString()}개

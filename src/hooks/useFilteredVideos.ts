@@ -4,10 +4,29 @@ import type { Video, FilterState } from '@/types'
 export function useFilteredVideos(
   videos: Video[],
   filters: FilterState,
-  searchQuery: string
+  searchQuery: string,
+  activeFilter: { type: string; value: string } | null
 ): Video[] {
   return useMemo(() => {
     let result = [...videos]
+
+    // URL param filter
+    if (activeFilter) {
+      switch (activeFilter.type) {
+        case '배우':
+          result = result.filter((v) => v.actors.includes(activeFilter.value))
+          break
+        case '시리즈':
+          result = result.filter((v) => v.series === activeFilter.value)
+          break
+        case '제작사':
+          result = result.filter((v) => v.makerName === activeFilter.value)
+          break
+        case '태그':
+          result = result.filter((v) => v.tags.includes(activeFilter.value))
+          break
+      }
+    }
 
     // 검색
     if (searchQuery.trim()) {
@@ -53,5 +72,5 @@ export function useFilteredVideos(
     })
 
     return result
-  }, [videos, filters, searchQuery])
+  }, [videos, filters, searchQuery, activeFilter])
 }
