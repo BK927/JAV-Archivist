@@ -22,6 +22,21 @@ interface FilterBarProps {
   onClearFilter: () => void
 }
 
+const SORT_LABELS: Record<string, string> = {
+  'addedAt-desc': '최근 추가순',
+  'addedAt-asc': '오래된 추가순',
+  'releasedAt-desc': '출시일 최신순',
+  'releasedAt-asc': '출시일 오래된순',
+  'title-asc': '제목 오름차순',
+  'title-desc': '제목 내림차순',
+}
+
+const WATCHED_LABELS: Record<string, string> = {
+  all: '전체',
+  unwatched: '미시청',
+  watched: '시청함',
+}
+
 export default function FilterBar({
   totalCount,
   tags,
@@ -34,12 +49,13 @@ export default function FilterBar({
   onClearFilter,
 }: FilterBarProps) {
   const { filters, setFilters } = useLibraryStore()
+  const sortKey = `${filters.sortBy}-${filters.sortOrder}`
 
   return (
     <div className="flex items-center gap-2 px-6 py-3 border-b border-border flex-wrap">
       {/* 정렬 */}
       <Select
-        value={`${filters.sortBy}-${filters.sortOrder}`}
+        value={sortKey}
         onValueChange={(value) => {
           if (!value) return
           const [sortBy, sortOrder] = value.split('-') as [
@@ -50,7 +66,7 @@ export default function FilterBar({
         }}
       >
         <SelectTrigger className="w-36 h-7 text-xs bg-secondary border-border">
-          <SelectValue />
+          <SelectValue placeholder={SORT_LABELS[sortKey]}>{SORT_LABELS[sortKey]}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="addedAt-desc">최근 추가순</SelectItem>
@@ -70,7 +86,7 @@ export default function FilterBar({
         }
       >
         <SelectTrigger className="w-24 h-7 text-xs bg-secondary border-border">
-          <SelectValue />
+          <SelectValue placeholder={WATCHED_LABELS[filters.watchedFilter]}>{WATCHED_LABELS[filters.watchedFilter]}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">전체</SelectItem>

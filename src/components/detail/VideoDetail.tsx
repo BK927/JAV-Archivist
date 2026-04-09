@@ -8,6 +8,7 @@ import InAppPlayer from './InAppPlayer'
 import { useTauriCommand } from '@/hooks/useTauriCommand'
 import { useLibraryStore } from '@/stores/libraryStore'
 import type { Video, SampleImage, Actor } from '@/types'
+import { assetUrl } from '@/lib/utils'
 
 interface VideoDetailProps {
   video: Video
@@ -83,7 +84,7 @@ export default function VideoDetail({ video, onClose }: VideoDetailProps) {
           <div className="aspect-[2/3] bg-muted rounded-md flex items-center justify-center">
             {video.thumbnailPath ? (
               <img
-                src={video.thumbnailPath}
+                src={assetUrl(video.thumbnailPath)}
                 alt={video.code}
                 className="w-full h-full object-cover rounded-md"
               />
@@ -118,7 +119,7 @@ export default function VideoDetail({ video, onClose }: VideoDetailProps) {
                       >
                         <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center overflow-hidden shrink-0">
                           {detail?.photoPath ? (
-                            <img src={detail.photoPath} alt={name} className="w-full h-full object-cover" />
+                            <img src={assetUrl(detail.photoPath)} alt={name} className="w-full h-full object-cover" />
                           ) : (
                             <User className="w-4 h-4 text-muted-foreground/40" />
                           )}
@@ -226,7 +227,7 @@ export default function VideoDetail({ video, onClose }: VideoDetailProps) {
                 className="shrink-0 w-24 h-16 rounded overflow-hidden border border-border hover:border-primary/50 transition-colors"
               >
                 <img
-                  src={img.path}
+                  src={assetUrl(img.path)}
                   alt={`Sample ${idx + 1}`}
                   className="w-full h-full object-cover"
                 />
@@ -243,7 +244,7 @@ export default function VideoDetail({ video, onClose }: VideoDetailProps) {
           onClick={() => setLightboxIdx(null)}
         >
           <img
-            src={sampleImages[lightboxIdx].path}
+            src={assetUrl(sampleImages[lightboxIdx].path)}
             alt="Sample"
             className="max-w-[90vw] max-h-[90vh] object-contain"
             onClick={(e) => e.stopPropagation()}

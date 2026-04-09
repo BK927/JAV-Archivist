@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Play, Star } from 'lucide-react'
 import type { Video } from '@/types'
-import { cn } from '@/lib/utils'
+import { cn, assetUrl } from '@/lib/utils'
 
 interface VideoCardProps {
   video: Video
@@ -23,7 +23,7 @@ export default function VideoCard({ video, onClick }: VideoCardProps) {
       <div className="relative aspect-[2/3] bg-muted overflow-hidden">
         {video.thumbnailPath ? (
           <img
-            src={video.thumbnailPath}
+            src={assetUrl(video.thumbnailPath)}
             alt={video.code}
             className="w-full h-full object-cover"
             loading="lazy"

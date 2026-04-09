@@ -1,5 +1,6 @@
 import { User } from 'lucide-react'
 import type { Actor } from '@/types'
+import { assetUrl } from '@/lib/utils'
 
 interface ActorGridProps {
   actors: Actor[]
@@ -20,7 +21,7 @@ export default function ActorGrid({ actors, onSelect }: ActorGridProps) {
         >
           <div className="w-16 h-16 rounded-full bg-secondary flex items-center justify-center overflow-hidden">
             {actor.photoPath ? (
-              <img src={actor.photoPath} alt={actor.name} className="w-full h-full object-cover" />
+              <img src={assetUrl(actor.photoPath)} alt={actor.name} className="w-full h-full object-cover" />
             ) : (
               <User className="w-7 h-7 text-muted-foreground/40" />
             )}
