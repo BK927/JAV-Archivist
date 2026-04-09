@@ -4,7 +4,7 @@ use std::sync::LazyLock;
 use walkdir::WalkDir;
 use uuid::Uuid;
 use chrono::Utc;
-use crate::models::{Video, VideoFile};
+use crate::models::{Video, VideoFile, ScrapeStatus};
 
 static FC2_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)FC2[-\s]?PPV[-\s]?(\d+)").unwrap()
@@ -118,6 +118,8 @@ fn group_by_code(files: Vec<ScannedFile>) -> Vec<Video> {
                 favorite: false,
                 added_at: now.clone(),
                 released_at: None,
+                scrape_status: ScrapeStatus::NotScraped,
+                scraped_at: None,
             });
         } else {
             groups.entry(file.code.clone()).or_default().push(file);
@@ -148,6 +150,8 @@ fn group_by_code(files: Vec<ScannedFile>) -> Vec<Video> {
                 favorite: false,
                 added_at: now.clone(),
                 released_at: None,
+                scrape_status: ScrapeStatus::NotScraped,
+                scraped_at: None,
             }
         })
         .collect();

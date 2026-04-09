@@ -1,6 +1,6 @@
 use rusqlite::{params, Connection, Result};
 use uuid::Uuid;
-use crate::models::{Settings, Video, VideoFile};
+use crate::models::{Settings, Video, VideoFile, ScrapeStatus};
 
 pub fn open(path: &str) -> Result<Connection> {
     Connection::open(path)
@@ -196,6 +196,8 @@ pub fn get_all_videos(conn: &Connection) -> Result<Vec<Video>> {
         videos.push(Video {
             id, code, title, files, thumbnail_path, actors, series, tags, duration,
             watched: watched != 0, favorite: favorite != 0, added_at, released_at,
+            scrape_status: ScrapeStatus::NotScraped,
+            scraped_at: None,
         });
     }
     Ok(videos)
@@ -227,6 +229,8 @@ pub fn get_video_by_id(conn: &Connection, id: &str) -> Result<Video> {
     Ok(Video {
         id: id.to_string(), code, title, files, thumbnail_path, actors, series, tags, duration,
         watched: watched != 0, favorite: favorite != 0, added_at, released_at,
+        scrape_status: ScrapeStatus::NotScraped,
+        scraped_at: None,
     })
 }
 
@@ -285,7 +289,7 @@ pub fn set_favorite(conn: &Connection, id: &str, favorite: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{Settings, VideoFile};
+    use crate::models::{Settings, VideoFile, ScrapeStatus};
 
     fn make_test_video(code: &str, title: &str, path: &str) -> Video {
         Video {
@@ -305,6 +309,8 @@ mod tests {
             favorite: false,
             added_at: "2026-04-09T00:00:00Z".to_string(),
             released_at: None,
+            scrape_status: ScrapeStatus::NotScraped,
+            scraped_at: None,
         }
     }
 
