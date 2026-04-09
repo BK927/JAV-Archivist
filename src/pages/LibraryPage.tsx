@@ -49,6 +49,7 @@ export default function LibraryPage() {
         if (cancelled) return
 
         const u1 = await listen<{ current: number; total: number; video?: Video }>('scrape-progress', (e) => {
+          setIsScraping(true)
           setScrapeProgress(e.payload)
           if (e.payload.video) {
             const current = useLibraryStore.getState().videos

@@ -14,6 +14,9 @@ static GENERAL_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)([A-Z]{2,6})-(\d{3,5})").unwrap()
 });
 
+/// Prefixes that look like JAV codes but are actually website/platform names.
+const NON_JAV_PREFIXES: &[&str] = &["FANTIA"];
+
 /// Extract a video code from a text string (filename or folder name).
 /// Returns the normalized code or None if no pattern matches.
 pub fn extract_code(text: &str) -> Option<String> {
@@ -26,6 +29,9 @@ pub fn extract_code(text: &str) -> Option<String> {
     // General pattern: ABC-123, ABCD-12345
     if let Some(caps) = GENERAL_RE.captures(text) {
         let prefix = caps[1].to_uppercase();
+        if NON_JAV_PREFIXES.contains(&prefix.as_str()) {
+            return None;
+        }
         let number = &caps[2];
         return Some(format!("{}-{}", prefix, number));
     }
@@ -249,6 +255,12 @@ mod tests {
         assert_eq!(extract_code("random_video"), None);
         assert_eq!(extract_code("video_20240301"), None);
         assert_eq!(extract_code(""), None);
+    }
+
+    #[test]
+    fn test_non_jav_prefixes_ignored() {
+        assert_eq!(extract_code("FANTIA-19978"), None);
+        assert_eq!(extract_code("FANTIA-27080"), None);
     }
 
     #[test]
