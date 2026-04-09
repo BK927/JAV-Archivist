@@ -70,6 +70,7 @@ pub(crate) fn parse_fc2_html(html: &str) -> Result<ScrapedMetadata, ScrapeError>
 pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadata, ScrapeError> {
     let id = extract_fc2_id(code).ok_or(ScrapeError::NotFound)?;
     let url = format!("https://adult.contents.fc2.com/article/{}/", id);
+    tracing::debug!("fc2: fetching {}", url);
     let resp = client
         .get(&url)
         .send()
@@ -78,12 +79,15 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
 
     let status = resp.status().as_u16();
     if status == 404 {
+        tracing::debug!("fc2: not found for code={}", code);
         return Err(ScrapeError::NotFound);
     }
     if status == 403 || status == 429 {
+        tracing::warn!("fc2: rate limited (HTTP {}) for code={}", status, code);
         return Err(ScrapeError::RateLimited);
     }
     if status != 200 {
+        tracing::error!("fc2: unexpected HTTP {} for code={}", status, code);
         return Err(ScrapeError::NetworkError(format!("HTTP {}", status)));
     }
 
@@ -94,10 +98,20 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
 
     // Short body likely means blocked or error page
     if body.len() < 1000 {
+        tracing::warn!("fc2: response body too short ({} bytes), likely blocked for code={}", body.len(), code);
         return Err(ScrapeError::RateLimited);
     }
 
-    parse_fc2_html(&body)
+    match parse_fc2_html(&body) {
+        Ok(meta) => {
+            tracing::debug!("fc2: parsed metadata for code={} title={:?}", code, meta.title);
+            Ok(meta)
+        }
+        Err(e) => {
+            tracing::error!("fc2: parse failed for code={}: {}", code, e);
+            Err(e)
+        }
+    }
 }
 
 #[cfg(test)]

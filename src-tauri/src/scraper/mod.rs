@@ -84,10 +84,12 @@ impl ScrapePipeline {
     }
 
     pub async fn scrape_one(&self, code: &str, video_id: &str) -> ScrapeResult {
+        tracing::info!("scrape_one: code={} video_id={}", code, video_id);
         let sources = sources_for(code);
         let mut merged = ScrapedMetadata::default();
 
         for source in &sources {
+            tracing::debug!("scrape_one: trying source={:?} for code={}", source, code);
             {
                 let rl = self.rate_limiter.lock().await;
                 rl.wait().await;
@@ -95,6 +97,7 @@ impl ScrapePipeline {
 
             match source.fetch(code, &self.client).await {
                 Ok(meta) => {
+                    tracing::info!("scrape_one: source={:?} succeeded for code={}", source, code);
                     merge(&mut merged, meta);
                     {
                         let mut rl = self.rate_limiter.lock().await;
@@ -105,10 +108,13 @@ impl ScrapePipeline {
                     }
                 }
                 Err(ScrapeError::RateLimited) => {
+                    tracing::warn!("scrape_one: rate limited by source={:?} for code={}", source, code);
                     let mut rl = self.rate_limiter.lock().await;
                     rl.failure();
                 }
-                Err(_) => {}
+                Err(e) => {
+                    tracing::error!("scrape_one: source={:?} failed for code={}: {:?}", source, code, e);
+                }
             }
         }
 
@@ -153,6 +159,8 @@ impl ScrapePipeline {
         } else {
             ScrapeStatus::NotFound
         };
+
+        tracing::info!("scrape_one: code={} final status={:?}", code, status);
 
         ScrapeResult {
             metadata: merged,

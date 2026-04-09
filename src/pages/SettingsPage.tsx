@@ -4,11 +4,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useTauriCommand } from '@/hooks/useTauriCommand'
 import { useLibraryStore } from '@/stores/libraryStore'
 import type { AppSettings, Video } from '@/types'
 
-const DEFAULT_SETTINGS: AppSettings = { scanFolders: [], playerPath: null }
+const DEFAULT_SETTINGS: AppSettings = { scanFolders: [], playerPath: null, logEnabled: false, logLevel: 'info' }
+
+const LOG_LEVEL_LABELS: Record<string, string> = { error: 'Error', warn: 'Warn', info: 'Info', debug: 'Debug' }
 
 export default function SettingsPage() {
   const { run } = useTauriCommand()
@@ -104,6 +107,44 @@ export default function SettingsPage() {
           <RefreshCw className={`w-3.5 h-3.5 mr-1 ${isScanning ? 'animate-spin' : ''}`} />
           {isScanning ? '스캔 중...' : '라이브러리 재스캔'}
         </Button>
+      </section>
+
+      <Separator />
+
+      {/* 로그 */}
+      <section className="space-y-3">
+        <Label className="text-sm font-medium">로그</Label>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={settings.logEnabled}
+              onChange={(e) => save({ ...settings, logEnabled: e.target.checked })}
+              className="rounded"
+            />
+            로그 활성화
+          </label>
+        </div>
+        {settings.logEnabled && (
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">로그 레벨</Label>
+            <Select
+              value={settings.logLevel}
+              onValueChange={(v) => v && save({ ...settings, logLevel: v })}
+            >
+              <SelectTrigger className="w-32 h-8 text-sm bg-secondary border-border">
+                <SelectValue>{LOG_LEVEL_LABELS[settings.logLevel] ?? settings.logLevel}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="error">Error</SelectItem>
+                <SelectItem value="warn">Warn</SelectItem>
+                <SelectItem value="info">Info</SelectItem>
+                <SelectItem value="debug">Debug</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        <p className="text-xs text-muted-foreground">변경 시 앱 재시작 필요</p>
       </section>
     </div>
   )

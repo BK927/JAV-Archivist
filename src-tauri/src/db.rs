@@ -12,6 +12,7 @@ pub fn open_in_memory() -> Result<Connection> {
 }
 
 pub fn init_db(conn: &Connection) -> Result<()> {
+    tracing::info!("db: initializing database");
     conn.execute_batch("PRAGMA journal_mode=WAL;")?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS videos (
@@ -101,6 +102,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
 
     migrate_series_to_table(conn)?;
 
+    tracing::info!("db: database initialized");
     Ok(())
 }
 
@@ -147,9 +149,28 @@ pub fn get_settings(conn: &Connection) -> Result<Settings> {
         .ok()
         .filter(|v| !v.is_empty());
 
+    let log_enabled: bool = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'log_enabled'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .map(|v| v == "true")
+        .unwrap_or(false);
+
+    let log_level: String = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'log_level'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap_or_else(|_| "info".to_string());
+
     Ok(Settings {
         scan_folders: serde_json::from_str(&scan_folders_json).unwrap_or_default(),
         player_path,
+        log_enabled,
+        log_level,
     })
 }
 
@@ -165,6 +186,16 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<()> {
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('player_path', ?1)",
         [settings.player_path.as_deref().unwrap_or("")],
+    )?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('log_enabled', ?1)",
+        [if settings.log_enabled { "true" } else { "false" }],
+    )?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('log_level', ?1)",
+        [&settings.log_level],
     )?;
 
     Ok(())

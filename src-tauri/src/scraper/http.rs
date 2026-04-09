@@ -25,11 +25,15 @@ impl RateLimiter {
     }
 
     pub fn success(&mut self) {
+        if self.current != self.base_delay {
+            tracing::debug!("rate_limiter: reset delay to {:?}", self.base_delay);
+        }
         self.current = self.base_delay;
     }
 
     pub fn failure(&mut self) {
         self.current = (self.current * 2).min(self.max_delay);
+        tracing::debug!("rate_limiter: increased delay to {:?}", self.current);
     }
 }
 

@@ -6,6 +6,7 @@ import SeriesPage from '@/pages/SeriesPage'
 import TagsPage from '@/pages/TagsPage'
 import MakersPage from '@/pages/MakersPage'
 import SettingsPage from '@/pages/SettingsPage'
+import LogPage from '@/pages/LogPage'
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
           <Route path="tags" element={<TagsPage />} />
           <Route path="makers" element={<MakersPage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="logs" element={<LogPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

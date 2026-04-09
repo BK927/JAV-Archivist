@@ -62,6 +62,8 @@ pub struct VideoFile {
 pub struct Settings {
     pub scan_folders: Vec<String>,
     pub player_path: Option<String>,
+    pub log_enabled: bool,
+    pub log_level: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

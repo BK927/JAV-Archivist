@@ -69,4 +69,6 @@ export interface FilterState {
 export interface AppSettings {
   scanFolders: string[]
   playerPath: string | null
+  logEnabled: boolean
+  logLevel: string
 }

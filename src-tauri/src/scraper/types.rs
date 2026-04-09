@@ -59,6 +59,7 @@ impl std::fmt::Display for ScrapeError {
     }
 }
 
+#[derive(Debug)]
 pub enum MetadataSource {
     Fc2,
     R18Dev,

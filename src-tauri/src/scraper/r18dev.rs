@@ -79,6 +79,7 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
         "https://r18.dev/videos/vod/movies/detail/-/combined={}/json",
         normalized
     );
+    tracing::debug!("r18dev: fetching {}", url);
     let resp = client
         .get(&url)
         .send()
@@ -87,12 +88,15 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
 
     let status = resp.status().as_u16();
     if status == 404 {
+        tracing::debug!("r18dev: not found for code={}", code);
         return Err(ScrapeError::NotFound);
     }
     if status == 403 || status == 429 {
+        tracing::warn!("r18dev: rate limited (HTTP {}) for code={}", status, code);
         return Err(ScrapeError::RateLimited);
     }
     if status != 200 {
+        tracing::error!("r18dev: unexpected HTTP {} for code={}", status, code);
         return Err(ScrapeError::NetworkError(format!("HTTP {}", status)));
     }
 
@@ -101,7 +105,16 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
         .await
         .map_err(|e| ScrapeError::NetworkError(e.to_string()))?;
 
-    parse_r18_json(&body)
+    match parse_r18_json(&body) {
+        Ok(meta) => {
+            tracing::debug!("r18dev: parsed metadata for code={} title={:?}", code, meta.title);
+            Ok(meta)
+        }
+        Err(e) => {
+            tracing::error!("r18dev: parse failed for code={}: {}", code, e);
+            Err(e)
+        }
+    }
 }
 
 #[cfg(test)]

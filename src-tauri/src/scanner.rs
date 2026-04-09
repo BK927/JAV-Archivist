@@ -46,6 +46,7 @@ pub fn scan_folders(folders: &[String]) -> Result<Vec<Video>, String> {
     let mut scanned: Vec<ScannedFile> = Vec::new();
 
     for folder in folders {
+        tracing::info!("scanner: scanning folder {:?}", folder);
         for entry in WalkDir::new(folder)
             .into_iter()
             .filter_map(|e| e.ok())
@@ -82,16 +83,22 @@ pub fn scan_folders(folders: &[String]) -> Result<Vec<Video>, String> {
 
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
 
-            scanned.push(ScannedFile {
+            let sf = ScannedFile {
                 path: path.to_string_lossy().to_string(),
                 size,
-                code,
+                code: code.clone(),
                 filename,
-            });
+            };
+            if code == "?" {
+                tracing::warn!("scanner: no code extracted for {:?}", sf.path);
+            }
+            scanned.push(sf);
         }
     }
 
-    Ok(group_by_code(scanned))
+    let videos = group_by_code(scanned);
+    tracing::info!("scanner: found {} videos", videos.len());
+    Ok(videos)
 }
 
 fn group_by_code(files: Vec<ScannedFile>) -> Vec<Video> {

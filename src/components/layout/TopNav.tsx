@@ -9,6 +9,7 @@ const TABS = [
   { path: '/series', label: '시리즈' },
   { path: '/tags', label: '태그' },
   { path: '/makers', label: '제작사' },
+  { path: '/logs', label: '로그' },
 ]
 
 export default function TopNav() {
