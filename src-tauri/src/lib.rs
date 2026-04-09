@@ -2,6 +2,7 @@ mod db;
 mod models;
 mod player;
 mod scanner;
+mod scraper;
 
 use models::{Settings, Video};
 use std::path::PathBuf;
