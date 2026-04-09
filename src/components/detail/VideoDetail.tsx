@@ -1,12 +1,13 @@
-import { useState } from 'react'
-import { ArrowLeft, Play, Star, Monitor } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { ArrowLeft, Play, Star, Monitor, User, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import InAppPlayer from './InAppPlayer'
 import { useTauriCommand } from '@/hooks/useTauriCommand'
 import { useLibraryStore } from '@/stores/libraryStore'
-import type { Video } from '@/types'
+import type { Video, SampleImage, Actor } from '@/types'
 
 interface VideoDetailProps {
   video: Video
@@ -23,6 +24,21 @@ export default function VideoDetail({ video, onClose }: VideoDetailProps) {
   const [showPlayer, setShowPlayer] = useState(false)
   const { run } = useTauriCommand()
   const { videos, setVideos } = useLibraryStore()
+  const navigate = useNavigate()
+  const [actorDetails, setActorDetails] = useState<Actor[]>([])
+  const [sampleImages, setSampleImages] = useState<SampleImage[]>([])
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null)
+  const [isScraping, setIsScraping] = useState(false)
+
+  useEffect(() => {
+    run<Actor[]>('get_actors', {}, []).then((all) => {
+      setActorDetails(all.filter((a) => video.actors.includes(a.name)))
+    })
+  }, [video.actors, run])
+
+  useEffect(() => {
+    run<SampleImage[]>('get_sample_images', { videoId: video.id }, []).then(setSampleImages)
+  }, [video.id, run])
 
   const handleExternalPlay = async () => {
     await run('open_with_player', { filePath: video.files[0]?.path ?? '' }, undefined)
@@ -38,6 +54,19 @@ export default function VideoDetail({ video, onClose }: VideoDetailProps) {
       v.id === video.id ? { ...v, favorite: !v.favorite } : v
     )
     setVideos(updated)
+  }
+
+  const handleScrape = async () => {
+    setIsScraping(true)
+    try {
+      const updated = await run<Video>('scrape_video', { videoId: video.id }, undefined)
+      if (updated) {
+        const newVideos = videos.map((v) => v.id === updated.id ? updated : v)
+        setVideos(newVideos)
+      }
+    } finally {
+      setIsScraping(false)
+    }
   }
 
   return (
@@ -74,9 +103,51 @@ export default function VideoDetail({ video, onClose }: VideoDetailProps) {
           </div>
 
           <div className="space-y-1 text-sm text-muted-foreground">
-            <p><span className="text-foreground">배우</span>: {video.actors.join(', ')}</p>
+            {/* 배우 — with photos and kanji */}
+            {video.actors.length > 0 && (
+              <div>
+                <span className="text-foreground text-sm">배우</span>
+                <div className="flex flex-wrap gap-3 mt-2">
+                  {video.actors.map((name) => {
+                    const detail = actorDetails.find((a) => a.name === name)
+                    return (
+                      <button
+                        key={name}
+                        onClick={() => navigate(`/library?actor=${encodeURIComponent(name)}`)}
+                        className="flex items-center gap-2 hover:bg-secondary/50 rounded px-2 py-1 transition-colors"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center overflow-hidden shrink-0">
+                          {detail?.photoPath ? (
+                            <img src={detail.photoPath} alt={name} className="w-full h-full object-cover" />
+                          ) : (
+                            <User className="w-4 h-4 text-muted-foreground/40" />
+                          )}
+                        </div>
+                        <div className="text-left">
+                          <p className="text-sm text-foreground leading-tight">{name}</p>
+                          {detail?.nameKanji && (
+                            <p className="text-[10px] text-muted-foreground leading-tight">{detail.nameKanji}</p>
+                          )}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
             {video.series && (
               <p><span className="text-foreground">시리즈</span>: {video.series}</p>
+            )}
+            {video.makerName && (
+              <p>
+                <span className="text-foreground">제작사</span>:{' '}
+                <button
+                  onClick={() => navigate(`/library?maker=${encodeURIComponent(video.makerName!)}`)}
+                  className="hover:text-foreground transition-colors underline"
+                >
+                  {video.makerName}
+                </button>
+              </p>
             )}
             {video.releasedAt && (
               <p><span className="text-foreground">출시일</span>: {video.releasedAt}</p>
@@ -120,6 +191,17 @@ export default function VideoDetail({ video, onClose }: VideoDetailProps) {
               />
               즐겨찾기
             </Button>
+            {(video.scrapeStatus === 'not_scraped' || video.scrapeStatus === 'not_found') && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleScrape}
+                disabled={isScraping}
+              >
+                <Download className={`w-4 h-4 mr-1 ${isScraping ? 'animate-spin' : ''}`} />
+                {isScraping ? '수집 중...' : '메타데이터 수집'}
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -130,6 +212,43 @@ export default function VideoDetail({ video, onClose }: VideoDetailProps) {
           filePath={video.files[0]?.path}
           onClose={() => setShowPlayer(false)}
         />
+      )}
+
+      {/* 샘플 이미지 갤러리 */}
+      {sampleImages.length > 0 && (
+        <div className="space-y-2">
+          <span className="text-sm text-foreground">샘플 이미지</span>
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {sampleImages.map((img, idx) => (
+              <button
+                key={img.id}
+                onClick={() => setLightboxIdx(idx)}
+                className="shrink-0 w-24 h-16 rounded overflow-hidden border border-border hover:border-primary/50 transition-colors"
+              >
+                <img
+                  src={img.path}
+                  alt={`Sample ${idx + 1}`}
+                  className="w-full h-full object-cover"
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 라이트박스 */}
+      {lightboxIdx !== null && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
+          onClick={() => setLightboxIdx(null)}
+        >
+          <img
+            src={sampleImages[lightboxIdx].path}
+            alt="Sample"
+            className="max-w-[90vw] max-h-[90vh] object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       )}
     </div>
   )
