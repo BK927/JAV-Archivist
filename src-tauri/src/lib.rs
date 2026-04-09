@@ -114,8 +114,13 @@ async fn scrape_video(
             meta.series.as_deref(),
             meta.duration,
             meta.released_at.as_deref(),
-            &meta.actors,
+            &meta.actors.iter().map(|name| crate::models::ActorDetail {
+                name: name.clone(),
+                name_kanji: None,
+            }).collect::<Vec<_>>(),
             &meta.tags,
+            meta.maker.as_deref(),
+            &[],
             status,
         )
         .map_err(|e| e.to_string())?;
@@ -170,8 +175,13 @@ async fn scrape_all_new(
                 meta.series.as_deref(),
                 meta.duration,
                 meta.released_at.as_deref(),
-                &meta.actors,
+                &meta.actors.iter().map(|name| crate::models::ActorDetail {
+                    name: name.clone(),
+                    name_kanji: None,
+                }).collect::<Vec<_>>(),
                 &meta.tags,
+                meta.maker.as_deref(),
+                &[],
                 evt_status,
             )
         })

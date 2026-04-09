@@ -1,6 +1,6 @@
 use rusqlite::{params, Connection, Result};
 use uuid::Uuid;
-use crate::models::{Settings, Video, VideoFile, ScrapeStatus, Actor, Maker, Series as SeriesModel, Tag, SampleImage};
+use crate::models::{Settings, Video, VideoFile, ScrapeStatus, Actor, ActorDetail, Maker, Series as SeriesModel, Tag, SampleImage};
 
 pub fn open(path: &str) -> Result<Connection> {
     Connection::open(path)
@@ -448,27 +448,67 @@ pub fn update_video_metadata(
     series: Option<&str>,
     duration: Option<u64>,
     released_at: Option<&str>,
-    actors: &[String],
+    actor_details: &[ActorDetail],
     tags: &[String],
+    maker: Option<&str>,
+    sample_image_paths: &[String],
     status: ScrapeStatus,
 ) -> Result<()> {
     conn.execute_batch("BEGIN")?;
 
     let result = (|| -> Result<()> {
+        // Upsert maker and get its id
+        let maker_id: Option<String> = if let Some(maker_name) = maker {
+            let new_id = Uuid::new_v4().to_string();
+            conn.execute(
+                "INSERT OR IGNORE INTO makers (id, name) VALUES (?1, ?2)",
+                params![new_id, maker_name],
+            )?;
+            let id: String = conn.query_row(
+                "SELECT id FROM makers WHERE name = ?1",
+                [maker_name],
+                |row| row.get(0),
+            )?;
+            Some(id)
+        } else {
+            None
+        };
+
+        // Upsert series and get its id
+        let series_id: Option<String> = if let Some(series_name) = series {
+            let new_id = Uuid::new_v4().to_string();
+            conn.execute(
+                "INSERT OR IGNORE INTO series (id, name) VALUES (?1, ?2)",
+                params![new_id, series_name],
+            )?;
+            let id: String = conn.query_row(
+                "SELECT id FROM series WHERE name = ?1",
+                [series_name],
+                |row| row.get(0),
+            )?;
+            Some(id)
+        } else {
+            None
+        };
+
         conn.execute(
             "UPDATE videos SET
                 title = COALESCE(?1, title),
                 thumbnail_path = COALESCE(?2, thumbnail_path),
                 series = COALESCE(?3, series),
-                duration = COALESCE(?4, duration),
-                released_at = COALESCE(?5, released_at),
-                scrape_status = ?6,
-                scraped_at = ?7
-             WHERE id = ?8",
+                series_id = COALESCE(?4, series_id),
+                maker_id = COALESCE(?5, maker_id),
+                duration = COALESCE(?6, duration),
+                released_at = COALESCE(?7, released_at),
+                scrape_status = ?8,
+                scraped_at = ?9
+             WHERE id = ?10",
             params![
                 title,
                 thumbnail_path,
                 series,
+                series_id,
+                maker_id,
                 duration.map(|d| d as i64),
                 released_at,
                 status.as_str(),
@@ -477,15 +517,16 @@ pub fn update_video_metadata(
             ],
         )?;
 
-        for actor_name in actors {
+        for detail in actor_details {
             let actor_id = Uuid::new_v4().to_string();
             conn.execute(
-                "INSERT OR IGNORE INTO actors (id, name) VALUES (?1, ?2)",
-                params![actor_id, actor_name],
+                "INSERT INTO actors (id, name, name_kanji) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(name) DO UPDATE SET name_kanji = COALESCE(excluded.name_kanji, actors.name_kanji)",
+                params![actor_id, detail.name, detail.name_kanji],
             )?;
             let actual_id: String = conn.query_row(
                 "SELECT id FROM actors WHERE name = ?1",
-                [actor_name],
+                [&detail.name],
                 |row| row.get(0),
             )?;
             conn.execute(
@@ -508,6 +549,18 @@ pub fn update_video_metadata(
             conn.execute(
                 "INSERT OR IGNORE INTO video_tags (video_id, tag_id) VALUES (?1, ?2)",
                 params![video_id, actual_id],
+            )?;
+        }
+
+        conn.execute(
+            "DELETE FROM sample_images WHERE video_id = ?1",
+            [video_id],
+        )?;
+        for (i, path) in sample_image_paths.iter().enumerate() {
+            let img_id = Uuid::new_v4().to_string();
+            conn.execute(
+                "INSERT INTO sample_images (id, video_id, path, sort_order) VALUES (?1, ?2, ?3, ?4)",
+                params![img_id, video_id, path, i as u32],
             )?;
         }
 
@@ -554,7 +607,7 @@ pub fn set_favorite(conn: &Connection, id: &str, favorite: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{Settings, VideoFile, ScrapeStatus};
+    use crate::models::{ActorDetail, Settings, VideoFile, ScrapeStatus};
 
     fn make_test_video(code: &str, title: &str, path: &str) -> Video {
         Video {
@@ -785,8 +838,13 @@ mod tests {
             Some("Test Series"),
             Some(7200),
             Some("2023-12-12"),
-            &["Actor One".to_string(), "Actor Two".to_string()],
+            &[
+                ActorDetail { name: "Actor One".to_string(), name_kanji: None },
+                ActorDetail { name: "Actor Two".to_string(), name_kanji: None },
+            ],
             &["Tag A".to_string(), "Tag B".to_string()],
+            None,
+            &[],
             ScrapeStatus::Complete,
         ).unwrap();
 
@@ -824,6 +882,8 @@ mod tests {
             None,
             &[],
             &["Tag X".to_string()],
+            None,
+            &[],
             ScrapeStatus::Partial,
         ).unwrap();
 
@@ -1048,5 +1108,50 @@ mod tests {
 
         let v = get_video_by_id(&conn, &video.id).unwrap();
         assert_eq!(v.maker_name.as_deref(), Some("S1 STYLE"));
+    }
+
+    #[test]
+    fn test_update_video_metadata_with_maker_and_details() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let video = make_test_video("ABC-123", "Original", "C:/test.mp4");
+        let id = video.id.clone();
+        upsert_videos(&conn, &[video]).unwrap();
+
+        update_video_metadata(
+            &conn,
+            &id,
+            Some("Scraped Title"),
+            None,
+            Some("SONE"),
+            Some(7200),
+            Some("2023-12-12"),
+            &[
+                ActorDetail { name: "Aoi Rena".to_string(), name_kanji: Some("葵レナ".to_string()) },
+                ActorDetail { name: "Mita Marin".to_string(), name_kanji: None },
+            ],
+            &["巨乳".to_string()],
+            Some("S1 STYLE"),
+            &["/samples/abc123_01.jpg".to_string(), "/samples/abc123_02.jpg".to_string()],
+            ScrapeStatus::Complete,
+        ).unwrap();
+
+        let v = get_video_by_id(&conn, &id).unwrap();
+        assert_eq!(v.title, "Scraped Title");
+        assert_eq!(v.maker_name.as_deref(), Some("S1 STYLE"));
+
+        let series_list = get_series(&conn).unwrap();
+        assert_eq!(series_list.len(), 1);
+        assert_eq!(series_list[0].name, "SONE");
+
+        let actors = get_actors(&conn).unwrap();
+        let aoi = actors.iter().find(|a| a.name == "Aoi Rena").unwrap();
+        assert_eq!(aoi.name_kanji.as_deref(), Some("葵レナ"));
+
+        let images = get_sample_images(&conn, &id).unwrap();
+        assert_eq!(images.len(), 2);
+        assert_eq!(images[0].path, "/samples/abc123_01.jpg");
+        assert_eq!(images[1].sort_order, 1);
     }
 }
