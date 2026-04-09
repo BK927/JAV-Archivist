@@ -52,6 +52,14 @@ pub(crate) fn parse_fc2_html(html: &str) -> Result<ScrapedMetadata, ScrapeError>
         }
     }
 
+    // 4. Parse sample images
+    let sample_sel = Selector::parse(".items_article_SampleImagesArea img[src]").unwrap();
+    for el in document.select(&sample_sel) {
+        if let Some(src) = el.value().attr("src") {
+            meta.sample_image_urls.push(src.to_string());
+        }
+    }
+
     if !meta.has_any_field() {
         return Err(ScrapeError::ParseError("no metadata found in HTML".to_string()));
     }
@@ -117,6 +125,9 @@ mod tests {
         assert_eq!(meta.maker.as_deref(), Some("testuser"));
         assert!(meta.actors.is_empty()); // FC2 doesn't provide actors
         assert!(meta.duration.is_none()); // FC2 doesn't provide duration
+        assert_eq!(meta.sample_image_urls.len(), 2);
+        assert_eq!(meta.sample_image_urls[0], "https://storage200000.contents.fc2.com/file/123/sample1.jpg");
+        assert_eq!(meta.sample_image_urls[1], "https://storage200000.contents.fc2.com/file/123/sample2.jpg");
     }
 
     #[test]

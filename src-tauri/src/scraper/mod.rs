@@ -138,6 +138,7 @@ mod tests {
             maker: Some("Maker".to_string()),
             duration: Some(3600),
             released_at: Some("2024-01-01".to_string()),
+            ..Default::default()
         };
         merge(&mut base, incoming);
 

@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use super::types::{ScrapedMetadata, ScrapeError};
+use super::types::{ScrapedMetadata, ScrapedActor, ScrapeError};
 
 #[derive(Deserialize)]
 struct R18Response {
@@ -17,6 +17,8 @@ struct R18Response {
 #[derive(Deserialize)]
 struct R18Actress {
     name_romaji: Option<String>,
+    name_kanji: Option<String>,
+    image_url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -29,11 +31,20 @@ pub(crate) fn parse_r18_json(json: &str) -> Result<ScrapedMetadata, ScrapeError>
     let resp: R18Response = serde_json::from_str(json)
         .map_err(|e| ScrapeError::ParseError(e.to_string()))?;
 
-    let actors = resp
-        .actresses
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|a| a.name_romaji)
+    let actress_list = resp.actresses.unwrap_or_default();
+
+    let actors: Vec<String> = actress_list.iter()
+        .filter_map(|a| a.name_romaji.clone())
+        .collect();
+
+    let actor_details: Vec<ScrapedActor> = actress_list.into_iter()
+        .filter_map(|a| {
+            a.name_romaji.map(|name| ScrapedActor {
+                name,
+                name_kanji: a.name_kanji,
+                photo_url: a.image_url,
+            })
+        })
         .collect();
 
     let tags = resp
@@ -47,11 +58,13 @@ pub(crate) fn parse_r18_json(json: &str) -> Result<ScrapedMetadata, ScrapeError>
         title: resp.title_ja.or(resp.title_en),
         cover_url: resp.jacket_full_url,
         actors,
+        actor_details,
         tags,
         series: resp.series_name_en,
         maker: resp.maker_name_en,
         duration: resp.runtime_mins.map(|m| m * 60),
         released_at: resp.release_date,
+        ..Default::default()
     })
 }
 
@@ -106,6 +119,10 @@ mod tests {
             Some("https://pics.dmm.co.jp/mono/movie/adult/sone001/sone001pl.jpg")
         );
         assert_eq!(meta.actors, vec!["Marin Mita", "Test Actress"]);
+        assert_eq!(meta.actor_details.len(), 2);
+        assert_eq!(meta.actor_details[0].name, "Marin Mita");
+        assert_eq!(meta.actor_details[0].name_kanji.as_deref(), Some("三田真鈴"));
+        assert_eq!(meta.actor_details[0].photo_url.as_deref(), Some("https://pics.dmm.co.jp/mono/actjpgs/mita_marin.jpg"));
         assert_eq!(meta.tags, vec!["巨乳", "デビュー作品"]);
         assert_eq!(meta.series.as_deref(), Some("First Experience Special"));
         assert_eq!(meta.maker.as_deref(), Some("S1 NO.1 STYLE"));

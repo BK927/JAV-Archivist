@@ -1,13 +1,22 @@
 #[derive(Debug, Clone, Default)]
+pub struct ScrapedActor {
+    pub name: String,
+    pub name_kanji: Option<String>,
+    pub photo_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct ScrapedMetadata {
     pub title: Option<String>,
     pub cover_url: Option<String>,
     pub actors: Vec<String>,
+    pub actor_details: Vec<ScrapedActor>,
     pub tags: Vec<String>,
     pub series: Option<String>,
     pub maker: Option<String>,
     pub duration: Option<u64>,
     pub released_at: Option<String>,
+    pub sample_image_urls: Vec<String>,
 }
 
 impl ScrapedMetadata {
@@ -19,6 +28,8 @@ impl ScrapedMetadata {
             || self.series.is_some()
             || self.duration.is_some()
             || self.released_at.is_some()
+            || !self.actor_details.is_empty()
+            || !self.sample_image_urls.is_empty()
     }
 
     /// Complete if title + cover present, and actors present (or FC2 code which has no actors)
