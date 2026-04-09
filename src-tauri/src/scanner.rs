@@ -120,6 +120,7 @@ fn group_by_code(files: Vec<ScannedFile>) -> Vec<Video> {
                 released_at: None,
                 scrape_status: ScrapeStatus::NotScraped,
                 scraped_at: None,
+                maker_name: None,
             });
         } else {
             groups.entry(file.code.clone()).or_default().push(file);
@@ -152,6 +153,7 @@ fn group_by_code(files: Vec<ScannedFile>) -> Vec<Video> {
                 released_at: None,
                 scrape_status: ScrapeStatus::NotScraped,
                 scraped_at: None,
+                maker_name: None,
             }
         })
         .collect();

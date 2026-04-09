@@ -264,6 +264,7 @@ pub fn get_all_videos(conn: &Connection) -> Result<Vec<Video>> {
             watched: watched != 0, favorite: favorite != 0, added_at, released_at,
             scrape_status: ScrapeStatus::from_str(&scrape_status_str),
             scraped_at,
+            maker_name: None,
         });
     }
     Ok(videos)
@@ -299,6 +300,7 @@ pub fn get_video_by_id(conn: &Connection, id: &str) -> Result<Video> {
         watched: watched != 0, favorite: favorite != 0, added_at, released_at,
         scrape_status: ScrapeStatus::from_str(&scrape_status_str),
         scraped_at,
+        maker_name: None,
     })
 }
 
@@ -474,6 +476,7 @@ mod tests {
             released_at: None,
             scrape_status: ScrapeStatus::NotScraped,
             scraped_at: None,
+            maker_name: None,
         }
     }
 

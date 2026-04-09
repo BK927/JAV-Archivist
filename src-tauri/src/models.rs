@@ -47,6 +47,7 @@ pub struct Video {
     pub released_at: Option<String>,
     pub scrape_status: ScrapeStatus,
     pub scraped_at: Option<String>,
+    pub maker_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,4 +62,54 @@ pub struct VideoFile {
 pub struct Settings {
     pub scan_folders: Vec<String>,
     pub player_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Actor {
+    pub id: String,
+    pub name: String,
+    pub name_kanji: Option<String>,
+    pub photo_path: Option<String>,
+    pub video_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Maker {
+    pub id: String,
+    pub name: String,
+    pub video_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Series {
+    pub id: String,
+    pub name: String,
+    pub cover_path: Option<String>,
+    pub video_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Tag {
+    pub id: String,
+    pub name: String,
+    pub video_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SampleImage {
+    pub id: String,
+    pub video_id: String,
+    pub path: String,
+    pub sort_order: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct ActorDetail {
+    pub name: String,
+    pub name_kanji: Option<String>,
 }
