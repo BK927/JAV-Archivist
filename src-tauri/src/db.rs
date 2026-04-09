@@ -64,6 +64,24 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS makers (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE
+        );
+
+        CREATE TABLE IF NOT EXISTS series (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            cover_path TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS sample_images (
+            id TEXT PRIMARY KEY,
+            video_id TEXT NOT NULL REFERENCES videos(id),
+            path TEXT NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0
         );"
     )?;
 
@@ -72,6 +90,38 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         "ALTER TABLE videos ADD COLUMN scrape_status TEXT DEFAULT 'not_scraped';
          ALTER TABLE videos ADD COLUMN scraped_at TEXT;"
     );
+
+    // Migration: add new columns
+    let _ = conn.execute("ALTER TABLE actors ADD COLUMN name_kanji TEXT", []);
+    let _ = conn.execute("ALTER TABLE videos ADD COLUMN maker_id TEXT", []);
+    let _ = conn.execute("ALTER TABLE videos ADD COLUMN series_id TEXT", []);
+
+    migrate_series_to_table(conn)?;
+
+    Ok(())
+}
+
+pub fn migrate_series_to_table(conn: &Connection) -> Result<()> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT series FROM videos WHERE series IS NOT NULL AND series != '' AND series_id IS NULL"
+    )?;
+    let series_names: Vec<String> = stmt
+        .query_map([], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    for name in &series_names {
+        let id = Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT OR IGNORE INTO series (id, name) VALUES (?1, ?2)",
+            params![id, name],
+        )?;
+    }
+
+    conn.execute_batch(
+        "UPDATE videos SET series_id = (SELECT id FROM series WHERE name = videos.series)
+         WHERE series IS NOT NULL AND series != '' AND series_id IS NULL"
+    )?;
 
     Ok(())
 }
@@ -689,5 +739,66 @@ mod tests {
         let to_scrape = get_videos_to_scrape(&conn).unwrap();
         assert_eq!(to_scrape.len(), 1);
         assert_eq!(to_scrape[0].1, "ABC-123");
+    }
+
+    #[test]
+    fn test_init_db_creates_new_tables() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let tables: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert!(tables.contains(&"makers".to_string()));
+        assert!(tables.contains(&"series".to_string()));
+        assert!(tables.contains(&"sample_images".to_string()));
+    }
+
+    #[test]
+    fn test_actors_table_has_name_kanji() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO actors (id, name, name_kanji, photo_path) VALUES ('a1', 'Test', '테스트', NULL)",
+            [],
+        ).unwrap();
+
+        let kanji: Option<String> = conn
+            .query_row("SELECT name_kanji FROM actors WHERE id = 'a1'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(kanji, Some("테스트".to_string()));
+    }
+
+    #[test]
+    fn test_series_migration_from_string() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        // Insert a video with series as string (old format)
+        conn.execute(
+            "INSERT INTO videos (id, code, title, series, added_at) VALUES ('v1', 'ABC-123', 'Test', 'SONE', '2026-01-01')",
+            [],
+        ).unwrap();
+
+        // Run migration
+        migrate_series_to_table(&conn).unwrap();
+
+        // series table should have an entry
+        let series_name: String = conn
+            .query_row("SELECT name FROM series LIMIT 1", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(series_name, "SONE");
+
+        // video should have series_id set
+        let series_id: Option<String> = conn
+            .query_row("SELECT series_id FROM videos WHERE id = 'v1'", [], |row| row.get(0))
+            .unwrap();
+        assert!(series_id.is_some());
     }
 }
