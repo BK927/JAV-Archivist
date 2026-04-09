@@ -62,7 +62,9 @@ impl std::fmt::Display for ScrapeError {
 #[derive(Debug)]
 pub enum MetadataSource {
     Fc2,
+    Javten,
     R18Dev,
+    JavBus,
 }
 
 impl MetadataSource {
@@ -70,7 +72,9 @@ impl MetadataSource {
     pub fn name(&self) -> &str {
         match self {
             Self::Fc2 => "fc2",
+            Self::Javten => "javten",
             Self::R18Dev => "r18dev",
+            Self::JavBus => "javbus",
         }
     }
 }

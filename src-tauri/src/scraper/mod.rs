@@ -2,6 +2,8 @@ pub mod types;
 pub mod http;
 pub mod r18dev;
 pub mod fc2;
+pub mod javbus;
+pub mod javten;
 pub mod image;
 
 use std::collections::HashMap;
@@ -36,9 +38,9 @@ fn merge(base: &mut ScrapedMetadata, incoming: ScrapedMetadata) {
 
 fn sources_for(code: &str) -> Vec<MetadataSource> {
     if code.starts_with("FC2-PPV") {
-        vec![MetadataSource::Fc2]
+        vec![MetadataSource::Fc2, MetadataSource::Javten]
     } else {
-        vec![MetadataSource::R18Dev]
+        vec![MetadataSource::R18Dev, MetadataSource::JavBus]
     }
 }
 
@@ -50,14 +52,19 @@ impl MetadataSource {
     ) -> Result<ScrapedMetadata, ScrapeError> {
         match self {
             Self::Fc2 => fc2::fetch(code, client).await,
+            Self::Javten => javten::fetch(code, client).await,
             Self::R18Dev => r18dev::fetch(code, client).await,
+            Self::JavBus => javbus::fetch(code, client).await,
         }
     }
 }
 
 pub struct ScrapePipeline {
     client: rquest::Client,
-    rate_limiter: Mutex<http::RateLimiter>,
+    fc2_limiter: Mutex<http::RateLimiter>,
+    javten_limiter: Mutex<http::RateLimiter>,
+    r18dev_limiter: Mutex<http::RateLimiter>,
+    javbus_limiter: Mutex<http::RateLimiter>,
     thumbnails_dir: PathBuf,
     actors_dir: PathBuf,
     samples_dir: PathBuf,
@@ -71,46 +78,71 @@ impl ScrapePipeline {
             .build()
             .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
+        let make_limiter = || Mutex::new(http::RateLimiter::new(
+            Duration::from_secs(3),
+            Duration::from_secs(60),
+        ));
+
         Ok(Self {
             client,
-            rate_limiter: Mutex::new(http::RateLimiter::new(
-                Duration::from_secs(3),
-                Duration::from_secs(60),
-            )),
+            fc2_limiter: make_limiter(),
+            javten_limiter: make_limiter(),
+            r18dev_limiter: make_limiter(),
+            javbus_limiter: make_limiter(),
             thumbnails_dir,
             actors_dir,
             samples_dir,
         })
     }
 
+    fn limiter_for(&self, source: &MetadataSource) -> &Mutex<http::RateLimiter> {
+        match source {
+            MetadataSource::Fc2 => &self.fc2_limiter,
+            MetadataSource::Javten => &self.javten_limiter,
+            MetadataSource::R18Dev => &self.r18dev_limiter,
+            MetadataSource::JavBus => &self.javbus_limiter,
+        }
+    }
+
+    async fn fetch_source(
+        &self,
+        source: &MetadataSource,
+        code: &str,
+    ) -> Result<ScrapedMetadata, ScrapeError> {
+        let limiter = self.limiter_for(source);
+        {
+            let guard = limiter.lock().await;
+            guard.wait().await;
+        }
+        let result = source.fetch(code, &self.client).await;
+        {
+            let mut guard = limiter.lock().await;
+            match &result {
+                Ok(_) => guard.success(),
+                Err(ScrapeError::RateLimited) => guard.failure(),
+                _ => {}
+            }
+        }
+        result
+    }
+
     pub async fn scrape_one(&self, code: &str, video_id: &str) -> ScrapeResult {
         tracing::info!("scrape_one: code={} video_id={}", code, video_id);
         let sources = sources_for(code);
+
+        // Fetch all sources concurrently
+        let fetch_futures = sources.iter().map(|source| self.fetch_source(source, code));
+        let results = futures::future::join_all(fetch_futures).await;
+
         let mut merged = ScrapedMetadata::default();
-
-        for source in &sources {
-            tracing::debug!("scrape_one: trying source={:?} for code={}", source, code);
-            {
-                let rl = self.rate_limiter.lock().await;
-                rl.wait().await;
-            }
-
-            match source.fetch(code, &self.client).await {
+        for (source, result) in sources.iter().zip(results) {
+            match result {
                 Ok(meta) => {
                     tracing::info!("scrape_one: source={:?} succeeded for code={}", source, code);
                     merge(&mut merged, meta);
-                    {
-                        let mut rl = self.rate_limiter.lock().await;
-                        rl.success();
-                    }
-                    if merged.is_complete(code) {
-                        break;
-                    }
                 }
                 Err(ScrapeError::RateLimited) => {
                     tracing::warn!("scrape_one: rate limited by source={:?} for code={}", source, code);
-                    let mut rl = self.rate_limiter.lock().await;
-                    rl.failure();
                 }
                 Err(e) => {
                     tracing::error!("scrape_one: source={:?} failed for code={}: {:?}", source, code, e);
@@ -234,14 +266,16 @@ mod tests {
     #[test]
     fn test_sources_for_fc2() {
         let sources = sources_for("FC2-PPV-1234567");
-        assert_eq!(sources.len(), 1);
+        assert_eq!(sources.len(), 2);
         assert_eq!(sources[0].name(), "fc2");
+        assert_eq!(sources[1].name(), "javten");
     }
 
     #[test]
     fn test_sources_for_general() {
         let sources = sources_for("ABC-123");
-        assert_eq!(sources.len(), 1);
+        assert_eq!(sources.len(), 2);
         assert_eq!(sources[0].name(), "r18dev");
+        assert_eq!(sources[1].name(), "javbus");
     }
 }

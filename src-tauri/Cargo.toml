@@ -28,6 +28,7 @@ walkdir = "2"
 open = "5"
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
+futures = "0.3"
 rquest = "5.1"
 rquest-util = "2.2"
 scraper = "0.22"
