@@ -157,13 +157,6 @@ async fn scrape_video(
     tokio::task::spawn_blocking(move || {
         let conn = db::open(db_path.to_str().unwrap()).map_err(|e| e.to_string())?;
 
-        for (actor_name, photo_path) in &actor_photo_map {
-            let _ = conn.execute(
-                "UPDATE actors SET photo_path = ?1 WHERE name = ?2 AND photo_path IS NULL",
-                rusqlite::params![photo_path.to_str(), actor_name],
-            );
-        }
-
         db::update_video_metadata(
             &conn,
             &vid_id,
@@ -179,6 +172,15 @@ async fn scrape_video(
             status,
         )
         .map_err(|e| e.to_string())?;
+
+        // Update actor photos AFTER upsert so actor rows exist
+        for (actor_name, photo_path) in &actor_photo_map {
+            let _ = conn.execute(
+                "UPDATE actors SET photo_path = ?1 WHERE name = ?2 AND photo_path IS NULL",
+                rusqlite::params![photo_path.to_str(), actor_name],
+            );
+        }
+
         db::get_video_by_id(&conn, &vid_id).map_err(|e| e.to_string())
     })
     .await
@@ -239,13 +241,6 @@ async fn scrape_all_new(
         tokio::task::spawn_blocking(move || {
             let conn = db::open(db_path2.to_str().unwrap())?;
 
-            for (actor_name, photo_path) in &actor_photo_map {
-                let _ = conn.execute(
-                    "UPDATE actors SET photo_path = ?1 WHERE name = ?2 AND photo_path IS NULL",
-                    rusqlite::params![photo_path.to_str(), actor_name],
-                );
-            }
-
             db::update_video_metadata(
                 &conn,
                 &vid_id,
@@ -259,7 +254,17 @@ async fn scrape_all_new(
                 meta.maker.as_deref(),
                 &sample_paths,
                 status,
-            )
+            )?;
+
+            // Update actor photos AFTER upsert so actor rows exist
+            for (actor_name, photo_path) in &actor_photo_map {
+                let _ = conn.execute(
+                    "UPDATE actors SET photo_path = ?1 WHERE name = ?2 AND photo_path IS NULL",
+                    rusqlite::params![photo_path.to_str(), actor_name],
+                );
+            }
+
+            Ok::<(), rusqlite::Error>(())
         })
         .await
         .map_err(|e| e.to_string())?

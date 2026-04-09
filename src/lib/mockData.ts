@@ -1,4 +1,4 @@
-import type { Video, Actor, Series, AppSettings } from '@/types'
+import type { Video, AppSettings } from '@/types'
 
 export const MOCK_VIDEOS: Video[] = [
   {
@@ -147,21 +147,6 @@ export const MOCK_VIDEOS: Video[] = [
   },
 ]
 
-export const MOCK_ACTORS: Actor[] = [
-  { id: 'a1', name: '아오이 레나', nameKanji: '葵レナ', photoPath: null, videoCount: 3 },
-  { id: 'a2', name: '사쿠라 모모', nameKanji: '桜ももか', photoPath: null, videoCount: 2 },
-  { id: 'a3', name: '하나 하루카', nameKanji: '花はるか', photoPath: null, videoCount: 2 },
-  { id: 'a4', name: '미즈키 아이', nameKanji: '水卜麻美', photoPath: null, videoCount: 2 },
-]
-
-export const MOCK_SERIES: Series[] = [
-  { id: 's1', name: 'SONE', coverPath: null, videoCount: 2 },
-  { id: 's2', name: 'MIDE', coverPath: null, videoCount: 2 },
-]
-
-export const MOCK_TAGS: string[] = [
-  '단독', '미소녀', '직장물', '기획물', '솔로',
-]
 
 export const MOCK_SETTINGS: AppSettings = {
   scanFolders: ['C:/Videos'],
