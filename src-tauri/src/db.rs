@@ -131,6 +131,22 @@ pub fn migrate_series_to_table(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+pub fn reset_data(conn: &Connection) -> Result<()> {
+    tracing::info!("db: resetting all data");
+    conn.execute_batch(
+        "DELETE FROM sample_images;
+         DELETE FROM video_tags;
+         DELETE FROM video_actors;
+         DELETE FROM video_files;
+         DELETE FROM videos;
+         DELETE FROM actors;
+         DELETE FROM tags;
+         DELETE FROM makers;
+         DELETE FROM series;"
+    )?;
+    Ok(())
+}
+
 pub fn get_settings(conn: &Connection) -> Result<Settings> {
     let scan_folders_json: String = conn
         .query_row(
@@ -804,6 +820,8 @@ mod tests {
         let settings = Settings {
             scan_folders: vec!["C:/Videos".to_string(), "D:/JAV".to_string()],
             player_path: Some("C:/mpv/mpv.exe".to_string()),
+            log_enabled: false,
+            log_level: "info".to_string(),
         };
         save_settings(&conn, &settings).unwrap();
 
@@ -820,12 +838,16 @@ mod tests {
         let s1 = Settings {
             scan_folders: vec!["C:/Old".to_string()],
             player_path: Some("old.exe".to_string()),
+            log_enabled: false,
+            log_level: "info".to_string(),
         };
         save_settings(&conn, &s1).unwrap();
 
         let s2 = Settings {
             scan_folders: vec!["C:/New".to_string()],
             player_path: None,
+            log_enabled: true,
+            log_level: "debug".to_string(),
         };
         save_settings(&conn, &s2).unwrap();
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FolderOpen, Trash2, RefreshCw } from 'lucide-react'
+import { FolderOpen, Trash2, RefreshCw, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -7,6 +7,7 @@ import { Separator } from '@/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useTauriCommand } from '@/hooks/useTauriCommand'
 import { useLibraryStore } from '@/stores/libraryStore'
+import { usePlayerStore } from '@/stores/playerStore'
 import type { AppSettings, Video } from '@/types'
 
 const DEFAULT_SETTINGS: AppSettings = { scanFolders: [], playerPath: null, logEnabled: false, logLevel: 'info' }
@@ -16,7 +17,10 @@ const LOG_LEVEL_LABELS: Record<string, string> = { error: 'Error', warn: 'Warn',
 export default function SettingsPage() {
   const { run } = useTauriCommand()
   const { setVideos, setScanning, isScanning } = useLibraryStore()
+  const { setCurrentVideo } = usePlayerStore()
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
+  const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [isResetting, setIsResetting] = useState(false)
 
   useEffect(() => {
     run<AppSettings>('get_settings', {}, DEFAULT_SETTINGS).then(setSettings)
@@ -115,15 +119,22 @@ export default function SettingsPage() {
       <section className="space-y-3">
         <Label className="text-sm font-medium">로그</Label>
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={settings.logEnabled}
-              onChange={(e) => save({ ...settings, logEnabled: e.target.checked })}
-              className="rounded"
+          <button
+            type="button"
+            role="switch"
+            aria-checked={settings.logEnabled}
+            onClick={() => save({ ...settings, logEnabled: !settings.logEnabled })}
+            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors ${
+              settings.logEnabled ? 'bg-primary' : 'bg-muted-foreground/30'
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform mt-0.5 ${
+                settings.logEnabled ? 'translate-x-[18px]' : 'translate-x-0.5'
+              }`}
             />
-            로그 활성화
-          </label>
+          </button>
+          <span className="text-sm">로그 활성화</span>
         </div>
         {settings.logEnabled && (
           <div className="space-y-2">
@@ -146,6 +157,73 @@ export default function SettingsPage() {
         )}
         <p className="text-xs text-muted-foreground">변경 시 앱 재시작 필요</p>
       </section>
+
+      <Separator />
+
+      {/* 데이터 초기화 */}
+      <section className="space-y-3">
+        <Label className="text-sm font-medium">데이터 관리</Label>
+        <div className="space-y-2">
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => setShowResetConfirm(true)}
+            disabled={isResetting}
+          >
+            <AlertTriangle className="w-3.5 h-3.5 mr-1" />
+            {isResetting ? '초기화 중...' : '데이터 초기화'}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            모든 비디오 메타데이터, 썸네일, 배우 사진을 삭제합니다. 설정과 스캔 폴더는 유지됩니다.
+          </p>
+        </div>
+      </section>
+
+      {/* 초기화 확인 다이얼로그 */}
+      {showResetConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-background border border-border rounded-lg p-6 max-w-sm w-full mx-4 shadow-xl space-y-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold">데이터를 초기화하시겠습니까?</h3>
+                <p className="text-xs text-muted-foreground">
+                  모든 비디오 메타데이터, 썸네일, 배우 사진, 샘플 이미지가 삭제됩니다.
+                  이 작업은 되돌릴 수 없습니다.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowResetConfirm(false)}
+              >
+                취소
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={async () => {
+                  setShowResetConfirm(false)
+                  setIsResetting(true)
+                  try {
+                    await run('reset_data', {}, undefined)
+                    setVideos([])
+                    setCurrentVideo(null)
+                  } catch {
+                    // error handled by tracing
+                  } finally {
+                    setIsResetting(false)
+                  }
+                }}
+              >
+                초기화
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

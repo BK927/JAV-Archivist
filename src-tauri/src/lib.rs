@@ -312,6 +312,29 @@ fn cancel_scrape(cancel: tauri::State<'_, ScrapeCancel>) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn reset_data(
+    db: tauri::State<'_, DbPath>,
+    thumbnails: tauri::State<'_, ThumbnailsDir>,
+    actors_state: tauri::State<'_, ActorsDir>,
+    samples_state: tauri::State<'_, SamplesDir>,
+) -> Result<(), String> {
+    tracing::info!("cmd: reset_data");
+    let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
+    db::reset_data(&conn).map_err(|e| e.to_string())?;
+
+    // Delete downloaded files
+    for dir in [&thumbnails.0, &actors_state.0, &samples_state.0] {
+        if dir.exists() {
+            let _ = std::fs::remove_dir_all(dir);
+            let _ = std::fs::create_dir_all(dir);
+        }
+    }
+
+    tracing::info!("reset_data: complete");
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -367,6 +390,7 @@ pub fn run() {
             scrape_video,
             scrape_all_new,
             cancel_scrape,
+            reset_data,
             get_actors,
             get_series_list,
             get_tags,
