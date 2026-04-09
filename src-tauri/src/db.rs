@@ -12,6 +12,7 @@ pub fn open_in_memory() -> Result<Connection> {
 }
 
 pub fn init_db(conn: &Connection) -> Result<()> {
+    conn.execute_batch("PRAGMA journal_mode=WAL;")?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS videos (
             id TEXT PRIMARY KEY,
@@ -23,7 +24,9 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             watched INTEGER DEFAULT 0,
             favorite INTEGER DEFAULT 0,
             added_at TEXT NOT NULL,
-            released_at TEXT
+            released_at TEXT,
+            scrape_status TEXT DEFAULT 'not_scraped',
+            scraped_at TEXT
         );
 
         CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_code ON videos(code) WHERE code != '?';
@@ -62,7 +65,15 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );"
-    )
+    )?;
+
+    // Migration for existing databases: add scrape columns
+    let _ = conn.execute_batch(
+        "ALTER TABLE videos ADD COLUMN scrape_status TEXT DEFAULT 'not_scraped';
+         ALTER TABLE videos ADD COLUMN scraped_at TEXT;"
+    );
+
+    Ok(())
 }
 
 pub fn get_settings(conn: &Connection) -> Result<Settings> {
@@ -170,7 +181,7 @@ fn upsert_videos_inner(conn: &Connection, videos: &[Video]) -> Result<()> {
 }
 
 pub fn get_all_videos(conn: &Connection) -> Result<Vec<Video>> {
-    let mut stmt = conn.prepare("SELECT id, code, title, thumbnail_path, series, duration, watched, favorite, added_at, released_at FROM videos ORDER BY added_at DESC")?;
+    let mut stmt = conn.prepare("SELECT id, code, title, thumbnail_path, series, duration, watched, favorite, added_at, released_at, scrape_status, scraped_at FROM videos ORDER BY added_at DESC")?;
     let video_rows = stmt.query_map([], |row| {
         Ok((
             row.get::<_, String>(0)?,
@@ -183,12 +194,14 @@ pub fn get_all_videos(conn: &Connection) -> Result<Vec<Video>> {
             row.get::<_, i32>(7)?,
             row.get::<_, String>(8)?,
             row.get::<_, Option<String>>(9)?,
+            row.get::<_, String>(10)?,
+            row.get::<_, Option<String>>(11)?,
         ))
     })?;
 
     let mut videos = Vec::new();
     for row in video_rows {
-        let (id, code, title, thumbnail_path, series, duration, watched, favorite, added_at, released_at) = row?;
+        let (id, code, title, thumbnail_path, series, duration, watched, favorite, added_at, released_at, scrape_status_str, scraped_at) = row?;
         let files = get_video_files(conn, &id)?;
         let actors = get_video_actors(conn, &id)?;
         let tags = get_video_tags(conn, &id)?;
@@ -196,16 +209,16 @@ pub fn get_all_videos(conn: &Connection) -> Result<Vec<Video>> {
         videos.push(Video {
             id, code, title, files, thumbnail_path, actors, series, tags, duration,
             watched: watched != 0, favorite: favorite != 0, added_at, released_at,
-            scrape_status: ScrapeStatus::NotScraped,
-            scraped_at: None,
+            scrape_status: ScrapeStatus::from_str(&scrape_status_str),
+            scraped_at,
         });
     }
     Ok(videos)
 }
 
 pub fn get_video_by_id(conn: &Connection, id: &str) -> Result<Video> {
-    let (code, title, thumbnail_path, series, duration, watched, favorite, added_at, released_at) = conn.query_row(
-        "SELECT code, title, thumbnail_path, series, duration, watched, favorite, added_at, released_at FROM videos WHERE id = ?1",
+    let (code, title, thumbnail_path, series, duration, watched, favorite, added_at, released_at, scrape_status_str, scraped_at) = conn.query_row(
+        "SELECT code, title, thumbnail_path, series, duration, watched, favorite, added_at, released_at, scrape_status, scraped_at FROM videos WHERE id = ?1",
         [id],
         |row| {
             Ok((
@@ -218,6 +231,8 @@ pub fn get_video_by_id(conn: &Connection, id: &str) -> Result<Video> {
                 row.get::<_, i32>(6)?,
                 row.get::<_, String>(7)?,
                 row.get::<_, Option<String>>(8)?,
+                row.get::<_, String>(9)?,
+                row.get::<_, Option<String>>(10)?,
             ))
         },
     )?;
@@ -229,8 +244,8 @@ pub fn get_video_by_id(conn: &Connection, id: &str) -> Result<Video> {
     Ok(Video {
         id: id.to_string(), code, title, files, thumbnail_path, actors, series, tags, duration,
         watched: watched != 0, favorite: favorite != 0, added_at, released_at,
-        scrape_status: ScrapeStatus::NotScraped,
-        scraped_at: None,
+        scrape_status: ScrapeStatus::from_str(&scrape_status_str),
+        scraped_at,
     })
 }
 
@@ -268,6 +283,101 @@ fn get_video_tags(conn: &Connection, video_id: &str) -> Result<Vec<String>> {
         .filter_map(|r| r.ok())
         .collect();
     Ok(tags)
+}
+
+pub fn update_video_metadata(
+    conn: &Connection,
+    video_id: &str,
+    title: Option<&str>,
+    thumbnail_path: Option<&str>,
+    series: Option<&str>,
+    duration: Option<u64>,
+    released_at: Option<&str>,
+    actors: &[String],
+    tags: &[String],
+    status: ScrapeStatus,
+) -> Result<()> {
+    conn.execute_batch("BEGIN")?;
+
+    let result = (|| -> Result<()> {
+        conn.execute(
+            "UPDATE videos SET
+                title = COALESCE(?1, title),
+                thumbnail_path = COALESCE(?2, thumbnail_path),
+                series = COALESCE(?3, series),
+                duration = COALESCE(?4, duration),
+                released_at = COALESCE(?5, released_at),
+                scrape_status = ?6,
+                scraped_at = ?7
+             WHERE id = ?8",
+            params![
+                title,
+                thumbnail_path,
+                series,
+                duration.map(|d| d as i64),
+                released_at,
+                status.as_str(),
+                chrono::Utc::now().to_rfc3339(),
+                video_id,
+            ],
+        )?;
+
+        for actor_name in actors {
+            let actor_id = Uuid::new_v4().to_string();
+            conn.execute(
+                "INSERT OR IGNORE INTO actors (id, name) VALUES (?1, ?2)",
+                params![actor_id, actor_name],
+            )?;
+            let actual_id: String = conn.query_row(
+                "SELECT id FROM actors WHERE name = ?1",
+                [actor_name],
+                |row| row.get(0),
+            )?;
+            conn.execute(
+                "INSERT OR IGNORE INTO video_actors (video_id, actor_id) VALUES (?1, ?2)",
+                params![video_id, actual_id],
+            )?;
+        }
+
+        for tag_name in tags {
+            let tag_id = Uuid::new_v4().to_string();
+            conn.execute(
+                "INSERT OR IGNORE INTO tags (id, name) VALUES (?1, ?2)",
+                params![tag_id, tag_name],
+            )?;
+            let actual_id: String = conn.query_row(
+                "SELECT id FROM tags WHERE name = ?1",
+                [tag_name],
+                |row| row.get(0),
+            )?;
+            conn.execute(
+                "INSERT OR IGNORE INTO video_tags (video_id, tag_id) VALUES (?1, ?2)",
+                params![video_id, actual_id],
+            )?;
+        }
+
+        Ok(())
+    })();
+
+    if result.is_ok() {
+        conn.execute_batch("COMMIT")?;
+    } else {
+        let _ = conn.execute_batch("ROLLBACK");
+    }
+    result
+}
+
+pub fn get_videos_to_scrape(conn: &Connection) -> Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, code FROM videos WHERE code != '?' AND scrape_status = 'not_scraped'"
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
 }
 
 pub fn set_watched(conn: &Connection, id: &str, watched: bool) -> Result<()> {
@@ -482,5 +592,102 @@ mod tests {
         let loaded = get_settings(&conn).unwrap();
         assert_eq!(loaded.scan_folders, vec!["C:/New"]);
         assert!(loaded.player_path.is_none());
+    }
+
+    #[test]
+    fn test_init_db_adds_scrape_columns() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let video = make_test_video("TEST-001", "Test", "C:/test.mp4");
+        upsert_videos(&conn, &[video.clone()]).unwrap();
+
+        let row: (String, Option<String>) = conn.query_row(
+            "SELECT scrape_status, scraped_at FROM videos WHERE id = ?1",
+            [&video.id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap();
+
+        assert_eq!(row.0, "not_scraped");
+        assert!(row.1.is_none());
+    }
+
+    #[test]
+    fn test_update_video_metadata() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let video = make_test_video("ABC-123", "Original Title", "C:/test.mp4");
+        let id = video.id.clone();
+        upsert_videos(&conn, &[video]).unwrap();
+
+        update_video_metadata(
+            &conn,
+            &id,
+            Some("Scraped Title"),
+            None,
+            Some("Test Series"),
+            Some(7200),
+            Some("2023-12-12"),
+            &["Actor One".to_string(), "Actor Two".to_string()],
+            &["Tag A".to_string(), "Tag B".to_string()],
+            ScrapeStatus::Complete,
+        ).unwrap();
+
+        let v = get_video_by_id(&conn, &id).unwrap();
+        assert_eq!(v.title, "Scraped Title");
+        assert_eq!(v.series, Some("Test Series".to_string()));
+        assert_eq!(v.duration, Some(7200));
+        assert_eq!(v.released_at, Some("2023-12-12".to_string()));
+        assert_eq!(v.scrape_status, ScrapeStatus::Complete);
+        assert!(v.scraped_at.is_some());
+        let mut actors = v.actors.clone();
+        actors.sort();
+        assert_eq!(actors, vec!["Actor One", "Actor Two"]);
+        let mut tags = v.tags.clone();
+        tags.sort();
+        assert_eq!(tags, vec!["Tag A", "Tag B"]);
+    }
+
+    #[test]
+    fn test_update_video_metadata_preserves_existing() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let video = make_test_video("ABC-123", "Original Title", "C:/test.mp4");
+        let id = video.id.clone();
+        upsert_videos(&conn, &[video]).unwrap();
+
+        update_video_metadata(
+            &conn,
+            &id,
+            None,
+            None,
+            None,
+            None,
+            None,
+            &[],
+            &["Tag X".to_string()],
+            ScrapeStatus::Partial,
+        ).unwrap();
+
+        let v = get_video_by_id(&conn, &id).unwrap();
+        assert_eq!(v.title, "Original Title");
+        assert_eq!(v.scrape_status, ScrapeStatus::Partial);
+        assert_eq!(v.tags, vec!["Tag X"]);
+    }
+
+    #[test]
+    fn test_get_videos_to_scrape() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let v1 = make_test_video("ABC-123", "Video 1", "C:/v1.mp4");
+        let v2 = make_test_video("?", "Unknown", "C:/unknown.mp4");
+        upsert_videos(&conn, &[v1, v2]).unwrap();
+
+        let to_scrape = get_videos_to_scrape(&conn).unwrap();
+        assert_eq!(to_scrape.len(), 1);
+        assert_eq!(to_scrape[0].1, "ABC-123");
     }
 }
