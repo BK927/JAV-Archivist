@@ -20,6 +20,8 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             title TEXT NOT NULL,
             thumbnail_path TEXT,
             series TEXT,
+            series_id TEXT,
+            maker_id TEXT,
             duration INTEGER,
             watched INTEGER DEFAULT 0,
             favorite INTEGER DEFAULT 0,
@@ -41,6 +43,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS actors (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,
+            name_kanji TEXT,
             photo_path TEXT
         );
 
