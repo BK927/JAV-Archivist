@@ -21,13 +21,34 @@ export interface Video {
   releasedAt: string | null
   scrapeStatus: ScrapeStatus
   scrapedAt: string | null
+  makerName: string | null
 }
 
 export interface Actor {
   id: string
   name: string
+  nameKanji: string | null
   photoPath: string | null
   videoCount: number
+}
+
+export interface Maker {
+  id: string
+  name: string
+  videoCount: number
+}
+
+export interface Tag {
+  id: string
+  name: string
+  videoCount: number
+}
+
+export interface SampleImage {
+  id: string
+  videoId: string
+  path: string
+  sortOrder: number
 }
 
 export interface Series {

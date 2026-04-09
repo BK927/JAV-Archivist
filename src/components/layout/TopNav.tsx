@@ -8,6 +8,7 @@ const TABS = [
   { path: '/actors', label: '배우' },
   { path: '/series', label: '시리즈' },
   { path: '/tags', label: '태그' },
+  { path: '/makers', label: '제작사' },
 ]
 
 export default function TopNav() {

@@ -17,6 +17,7 @@ export const MOCK_VIDEOS: Video[] = [
     releasedAt: '2026-01-15',
     scrapeStatus: 'not_scraped' as const,
     scrapedAt: null,
+    makerName: 'S1 No.1 Style',
   },
   {
     id: '2',
@@ -34,6 +35,7 @@ export const MOCK_VIDEOS: Video[] = [
     releasedAt: '2026-02-01',
     scrapeStatus: 'not_scraped' as const,
     scrapedAt: null,
+    makerName: 'MediaStation',
   },
   {
     id: '3',
@@ -51,6 +53,7 @@ export const MOCK_VIDEOS: Video[] = [
     releasedAt: '2026-02-20',
     scrapeStatus: 'not_scraped' as const,
     scrapedAt: null,
+    makerName: 'IdeaPocket',
   },
   {
     id: '4',
@@ -68,6 +71,7 @@ export const MOCK_VIDEOS: Video[] = [
     releasedAt: '2026-03-01',
     scrapeStatus: 'not_scraped' as const,
     scrapedAt: null,
+    makerName: 'S1 No.1 Style',
   },
   {
     id: '5',
@@ -85,6 +89,7 @@ export const MOCK_VIDEOS: Video[] = [
     releasedAt: '2026-03-10',
     scrapeStatus: 'not_scraped' as const,
     scrapedAt: null,
+    makerName: 'Antbee',
   },
   {
     id: '6',
@@ -102,6 +107,7 @@ export const MOCK_VIDEOS: Video[] = [
     releasedAt: '2026-03-15',
     scrapeStatus: 'not_scraped' as const,
     scrapedAt: null,
+    makerName: 'MediaStation',
   },
   {
     id: '7',
@@ -119,6 +125,7 @@ export const MOCK_VIDEOS: Video[] = [
     releasedAt: '2026-03-25',
     scrapeStatus: 'not_scraped' as const,
     scrapedAt: null,
+    makerName: 'Rocket',
   },
   {
     id: '8',
@@ -136,14 +143,15 @@ export const MOCK_VIDEOS: Video[] = [
     releasedAt: '2026-04-01',
     scrapeStatus: 'not_scraped' as const,
     scrapedAt: null,
+    makerName: 'Madonna',
   },
 ]
 
 export const MOCK_ACTORS: Actor[] = [
-  { id: 'a1', name: '아오이 레나', photoPath: null, videoCount: 3 },
-  { id: 'a2', name: '사쿠라 모모', photoPath: null, videoCount: 2 },
-  { id: 'a3', name: '하나 하루카', photoPath: null, videoCount: 2 },
-  { id: 'a4', name: '미즈키 아이', photoPath: null, videoCount: 2 },
+  { id: 'a1', name: '아오이 레나', nameKanji: '葵レナ', photoPath: null, videoCount: 3 },
+  { id: 'a2', name: '사쿠라 모모', nameKanji: '桜ももか', photoPath: null, videoCount: 2 },
+  { id: 'a3', name: '하나 하루카', nameKanji: '花はるか', photoPath: null, videoCount: 2 },
+  { id: 'a4', name: '미즈키 아이', nameKanji: '水卜麻美', photoPath: null, videoCount: 2 },
 ]
 
 export const MOCK_SERIES: Series[] = [

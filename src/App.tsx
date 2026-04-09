@@ -4,6 +4,7 @@ import LibraryPage from '@/pages/LibraryPage'
 import ActorsPage from '@/pages/ActorsPage'
 import SeriesPage from '@/pages/SeriesPage'
 import TagsPage from '@/pages/TagsPage'
+import MakersPage from '@/pages/MakersPage'
 import SettingsPage from '@/pages/SettingsPage'
 
 export default function App() {
@@ -17,6 +18,7 @@ export default function App() {
           <Route path="actors" element={<ActorsPage />} />
           <Route path="series" element={<SeriesPage />} />
           <Route path="tags" element={<TagsPage />} />
+          <Route path="makers" element={<MakersPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>
