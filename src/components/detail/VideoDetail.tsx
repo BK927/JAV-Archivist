@@ -237,7 +237,7 @@ export default function VideoDetail({ video, onClose }: VideoDetailProps) {
       )}
 
       {/* 라이트박스 */}
-      {lightboxIdx !== null && (
+      {lightboxIdx !== null && lightboxIdx < sampleImages.length && (
         <div
           className="fixed inset-0 bg-black/80 flex items-center justify-center z-50"
           onClick={() => setLightboxIdx(null)}
