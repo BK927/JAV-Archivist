@@ -48,8 +48,12 @@ export default function LibraryPage() {
         const { listen } = await import('@tauri-apps/api/event')
         if (cancelled) return
 
-        const u1 = await listen<{ current: number; total: number }>('scrape-progress', (e) => {
+        const u1 = await listen<{ current: number; total: number; video?: Video }>('scrape-progress', (e) => {
           setScrapeProgress(e.payload)
+          if (e.payload.video) {
+            const current = useLibraryStore.getState().videos
+            setVideos(current.map((v) => v.id === e.payload.video!.id ? e.payload.video! : v))
+          }
         })
         if (cancelled) { u1(); return }
 

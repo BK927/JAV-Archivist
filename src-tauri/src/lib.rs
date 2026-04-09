@@ -25,6 +25,7 @@ struct ScrapeProgressEvent {
     status: ScrapeStatus,
     current: usize,
     total: usize,
+    video: Option<Video>,
 }
 
 #[tauri::command]
@@ -257,7 +258,7 @@ async fn scrape_all_new(
         let evt_status = result.status.clone();
         let status = result.status;
 
-        tokio::task::spawn_blocking(move || {
+        let updated_video = tokio::task::spawn_blocking(move || {
             let conn = db::open(db_path2.to_str().unwrap())?;
 
             db::update_video_metadata(
@@ -283,7 +284,8 @@ async fn scrape_all_new(
                 );
             }
 
-            Ok::<(), rusqlite::Error>(())
+            let video = db::get_video_by_id(&conn, &vid_id).ok();
+            Ok::<Option<Video>, rusqlite::Error>(video)
         })
         .await
         .map_err(|e| e.to_string())?
@@ -294,6 +296,7 @@ async fn scrape_all_new(
             status: evt_status,
             current: i + 1,
             total,
+            video: updated_video,
         });
     }
 
