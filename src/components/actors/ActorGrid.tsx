@@ -28,6 +28,11 @@ export default function ActorGrid({ actors, onSelect }: ActorGridProps) {
           <span className="text-xs text-center text-foreground leading-snug line-clamp-2">
             {actor.name}
           </span>
+          {actor.nameKanji && (
+            <span className="text-[10px] text-center text-muted-foreground leading-snug line-clamp-1">
+              {actor.nameKanji}
+            </span>
+          )}
           <span className="text-[11px] text-muted-foreground">{actor.videoCount}편</span>
         </button>
       ))}

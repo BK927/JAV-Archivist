@@ -7,7 +7,6 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useFilteredVideos } from '@/hooks/useFilteredVideos'
 import { useTauriCommand } from '@/hooks/useTauriCommand'
-import { MOCK_VIDEOS } from '@/lib/mockData'
 import type { Video } from '@/types'
 
 export default function LibraryPage() {
@@ -17,9 +16,10 @@ export default function LibraryPage() {
   const { currentVideo, setCurrentVideo } = usePlayerStore()
   const { run } = useTauriCommand()
   const filtered = useFilteredVideos(videos, filters, searchQuery)
+  const allTags = [...new Set(videos.flatMap((v) => v.tags))]
 
   useEffect(() => {
-    run<Video[]>('scan_library', {}, MOCK_VIDEOS).then(setVideos)
+    run<Video[]>('scan_library', {}, []).then(setVideos)
   }, [run, setVideos])
 
   useEffect(() => {
@@ -40,7 +40,7 @@ export default function LibraryPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <FilterBar totalCount={filtered.length} />
+      <FilterBar totalCount={filtered.length} tags={allTags} />
       <div className="flex-1 overflow-auto">
         <VideoGrid videos={filtered} onSelect={handleSelect} />
       </div>

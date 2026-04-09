@@ -7,13 +7,13 @@ import {
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { useLibraryStore } from '@/stores/libraryStore'
-import { MOCK_TAGS } from '@/lib/mockData'
 
 interface FilterBarProps {
   totalCount: number
+  tags: string[]
 }
 
-export default function FilterBar({ totalCount }: FilterBarProps) {
+export default function FilterBar({ totalCount, tags }: FilterBarProps) {
   const { filters, setFilters } = useLibraryStore()
 
   return (
@@ -70,7 +70,7 @@ export default function FilterBar({ totalCount }: FilterBarProps) {
       </Badge>
 
       {/* 태그 필터 */}
-      {MOCK_TAGS.map((tag) => (
+      {tags.map((tag) => (
         <Badge
           key={tag}
           variant={filters.tags.includes(tag) ? 'default' : 'outline'}
