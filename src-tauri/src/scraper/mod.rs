@@ -51,21 +51,21 @@ pub struct ScrapePipeline {
 }
 
 impl ScrapePipeline {
-    pub fn new(thumbnails_dir: PathBuf) -> Self {
+    pub fn new(thumbnails_dir: PathBuf) -> Result<Self, String> {
         let client = rquest::Client::builder()
             .emulation(Emulation::Chrome131)
             .timeout(Duration::from_secs(30))
             .build()
-            .unwrap();
+            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-        Self {
+        Ok(Self {
             client,
             rate_limiter: Mutex::new(http::RateLimiter::new(
                 Duration::from_secs(3),
                 Duration::from_secs(60),
             )),
             thumbnails_dir,
-        }
+        })
     }
 
     pub async fn scrape_one(

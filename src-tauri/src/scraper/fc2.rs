@@ -86,7 +86,7 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
 
     // Short body likely means blocked or error page
     if body.len() < 1000 {
-        return Err(ScrapeError::NotFound);
+        return Err(ScrapeError::RateLimited);
     }
 
     parse_fc2_html(&body)

@@ -99,7 +99,7 @@ async fn scrape_video(
         return Err("Cannot scrape video with unknown code".to_string());
     }
 
-    let pipeline = scraper::ScrapePipeline::new(thumbnails.0.clone());
+    let pipeline = scraper::ScrapePipeline::new(thumbnails.0.clone())?;
     let (meta, thumb_path, status) = pipeline.scrape_one(&code, &video_id).await;
 
     let db_path = db.0.clone();
@@ -148,7 +148,7 @@ async fn scrape_all_new(
     .map_err(|e| e.to_string())??;
 
     let total = to_scrape.len();
-    let pipeline = scraper::ScrapePipeline::new(thumbnails_dir);
+    let pipeline = scraper::ScrapePipeline::new(thumbnails_dir)?;
 
     for (i, (video_id, code)) in to_scrape.into_iter().enumerate() {
         if cancel_flag.load(Ordering::SeqCst) {
