@@ -18,6 +18,7 @@ beforeEach(() => {
     filters: DEFAULT_FILTERS,
     searchQuery: '',
     isScanning: false,
+    allTags: [],
   })
 })
 
