@@ -44,6 +44,12 @@ export interface Tag {
   videoCount: number
 }
 
+export interface TagCooccurrence {
+  tagId: string
+  tagName: string
+  coCount: number
+}
+
 export interface SampleImage {
   id: string
   videoId: string
@@ -58,12 +64,22 @@ export interface Series {
   videoCount: number
 }
 
+export interface TagGroup {
+  id: string
+  tags: string[]
+}
+
+export interface TagFilter {
+  groups: TagGroup[]
+  groupOperator: 'AND' | 'OR'
+}
+
 export interface FilterState {
   sortBy: 'addedAt' | 'releasedAt' | 'title'
   sortOrder: 'asc' | 'desc'
   watchedFilter: 'all' | 'watched' | 'unwatched'
   favoriteOnly: boolean
-  tags: string[]
+  tagFilter: TagFilter
 }
 
 export interface AppSettings {
