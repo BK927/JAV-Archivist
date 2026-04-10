@@ -39,7 +39,7 @@ pub fn extract_code(text: &str) -> Option<String> {
     None
 }
 
-const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "avi", "wmv", "flv", "mov", "ts", "m4v"];
+pub const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "avi", "wmv", "flv", "mov", "ts", "m4v"];
 
 struct ScannedFile {
     path: String,

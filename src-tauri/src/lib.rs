@@ -149,7 +149,7 @@ fn save_settings(
         app.clone(),
         &settings.scan_folders,
         db.0.clone(),
-    ).ok();
+    ).map_err(|e| { tracing::warn!("watcher restart failed: {}", e); e }).ok();
     *watcher_handle.0.lock().unwrap() = new_watcher;
 
     sync_asset_protocol_scope(&app, &settings, &data_dir.0)
@@ -458,7 +458,7 @@ pub fn run() {
                 _app.handle().clone(),
                 &settings.scan_folders,
                 db_path.clone(),
-            ).ok();
+            ).map_err(|e| { tracing::warn!("watcher failed to start: {}", e); e }).ok();
             _app.manage(WatcherHandle(Mutex::new(watcher)));
 
             Ok(())

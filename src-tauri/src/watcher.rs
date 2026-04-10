@@ -1,17 +1,16 @@
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 use tauri::Emitter;
 
 use crate::{db, scanner};
 
-const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mkv", "avi", "wmv", "flv", "mov", "ts", "m4v"];
 const DEBOUNCE_SECS: u64 = 2;
 
 fn is_video_file(path: &Path) -> bool {
     path.extension()
         .and_then(|e| e.to_str())
-        .map(|e| VIDEO_EXTENSIONS.contains(&e.to_lowercase().as_str()))
+        .map(|e| scanner::VIDEO_EXTENSIONS.contains(&e.to_lowercase().as_str()))
         .unwrap_or(false)
 }
 
@@ -21,7 +20,7 @@ fn is_video_file(path: &Path) -> bool {
 pub fn start(
     app: tauri::AppHandle,
     folders: &[String],
-    db_path: PathBuf,
+    db_path: std::path::PathBuf,
 ) -> Result<RecommendedWatcher, String> {
     let (tx, rx) = std::sync::mpsc::channel();
 
@@ -39,6 +38,11 @@ pub fn start(
             tracing::warn!("watcher: folder does not exist, skipping {:?}", folder);
         }
     }
+
+    // db_path를 String으로 변환하여 스레드에 전달 (to_str().unwrap() panic 방지)
+    let db_path_str = db_path.to_str()
+        .ok_or_else(|| "db_path contains invalid unicode".to_string())?
+        .to_string();
 
     // 백그라운드 스레드: 이벤트 수신 → 디바운스 → 스캔 → 이벤트 발행
     std::thread::spawn(move || {
@@ -59,7 +63,7 @@ pub fn start(
                     if pending {
                         pending = false;
                         tracing::info!("watcher: debounce expired, scanning...");
-                        trigger_scan(&app, &db_path);
+                        trigger_scan(&app, &db_path_str);
                     }
                 }
                 Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
@@ -73,8 +77,8 @@ pub fn start(
     Ok(watcher)
 }
 
-fn trigger_scan(app: &tauri::AppHandle, db_path: &Path) {
-    let conn = match db::open(db_path.to_str().unwrap()) {
+fn trigger_scan(app: &tauri::AppHandle, db_path: &str) {
+    let conn = match db::open(db_path) {
         Ok(c) => c,
         Err(e) => { tracing::error!("watcher: db open failed: {}", e); return; }
     };
