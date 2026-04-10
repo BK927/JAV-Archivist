@@ -31,7 +31,6 @@ export default function LibraryPage() {
   const clearFilter = () => setSearchParams({})
 
   const filtered = useFilteredVideos(videos, filters, searchQuery, activeFilter)
-  const filteredIds = useMemo(() => filtered.map((v) => v.id), [filtered])
 
   // videos.length를 의존성으로 사용해 개별 비디오 업데이트 시 불필요한 재페칭 방지
   const videoCount = videos.length
@@ -85,7 +84,7 @@ export default function LibraryPage() {
       <div className="flex-1 overflow-auto">
         <VideoGrid videos={filtered} onSelect={handleSelect} />
       </div>
-      <FloatingActionBar filteredIds={filteredIds} />
+      <FloatingActionBar filteredVideos={filtered} />
     </div>
   )
 }

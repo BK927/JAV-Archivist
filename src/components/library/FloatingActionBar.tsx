@@ -14,7 +14,7 @@ interface ScrapeProgress {
 
 type ActionBarMode = 'selection' | 'progress' | 'result'
 
-export default function FloatingActionBar({ filteredIds }: { filteredIds: string[] }) {
+export default function FloatingActionBar({ filteredVideos }: { filteredVideos: Video[] }) {
   const { selectedIds, clearSelection, setSelectionMode, selectAll } = useLibraryStore()
   const { run } = useTauriCommand()
   const [mode, setMode] = useState<ActionBarMode>('selection')
@@ -104,8 +104,18 @@ export default function FloatingActionBar({ filteredIds }: { filteredIds: string
     await run('cancel_scrape', {}, undefined)
   }
 
+  const filteredIds = filteredVideos.map((v) => v.id)
+
   const handleSelectAll = () => {
     selectAll(filteredIds)
+  }
+
+  const unscrapedIds = filteredVideos
+    .filter((v) => v.scrapeStatus !== 'complete')
+    .map((v) => v.id)
+
+  const handleSelectUnscraped = () => {
+    selectAll(unscrapedIds)
   }
 
   // Progress mode
@@ -164,6 +174,11 @@ export default function FloatingActionBar({ filteredIds }: { filteredIds: string
       <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleSelectAll}>
         전체 선택
       </Button>
+      {unscrapedIds.length > 0 && (
+        <Button variant="ghost" size="sm" className="h-7 text-xs text-orange-400 hover:text-orange-300" onClick={handleSelectUnscraped}>
+          미수집 선택
+        </Button>
+      )}
     </div>
   )
 }
