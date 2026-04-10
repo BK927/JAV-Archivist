@@ -386,6 +386,17 @@ fn cancel_scrape(cancel: tauri::State<'_, ScrapeCancel>) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn reset_scrape_status(
+    db: tauri::State<'_, DbPath>,
+    video_ids: Vec<String>,
+) -> Result<(), String> {
+    tracing::info!("cmd: reset_scrape_status count={}", video_ids.len());
+    let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
+    db::reset_scrape_status(&conn, &video_ids).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 fn reset_data(
     db: tauri::State<'_, DbPath>,
     thumbnails: tauri::State<'_, ThumbnailsDir>,
@@ -475,6 +486,7 @@ pub fn run() {
             scrape_video,
             scrape_all_new,
             cancel_scrape,
+            reset_scrape_status,
             reset_data,
             get_actors,
             get_series_list,

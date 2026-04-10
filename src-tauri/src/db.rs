@@ -742,6 +742,23 @@ pub fn get_videos_to_scrape(conn: &Connection) -> Result<Vec<(String, String)>> 
     Ok(rows)
 }
 
+pub fn reset_scrape_status(conn: &Connection, video_ids: &[String]) -> Result<()> {
+    if video_ids.is_empty() {
+        return Ok(());
+    }
+    let placeholders: Vec<&str> = video_ids.iter().map(|_| "?").collect();
+    let sql = format!(
+        "UPDATE videos SET scrape_status = 'not_scraped' WHERE id IN ({})",
+        placeholders.join(",")
+    );
+    let params: Vec<&dyn rusqlite::types::ToSql> = video_ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::types::ToSql)
+        .collect();
+    conn.execute(&sql, params.as_slice())?;
+    Ok(())
+}
+
 pub fn set_watched(conn: &Connection, id: &str, watched: bool) -> Result<()> {
     conn.execute(
         "UPDATE videos SET watched = ?1 WHERE id = ?2",
