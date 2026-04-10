@@ -51,11 +51,18 @@ export function useFilteredVideos(
       result = result.filter((v) => v.favorite)
     }
 
-    // 태그
-    if (filters.tags.length > 0) {
-      result = result.filter((v) =>
-        filters.tags.every((tag) => v.tags.includes(tag))
-      )
+    // 태그 그룹 필터
+    const { groups, groupOperator } = filters.tagFilter
+    const activeGroups = groups.filter((g) => g.tags.length > 0)
+    if (activeGroups.length > 0) {
+      result = result.filter((v) => {
+        const groupResults = activeGroups.map((g) =>
+          g.tags.some((tag) => v.tags.includes(tag))
+        )
+        return groupOperator === 'AND'
+          ? groupResults.every(Boolean)
+          : groupResults.some(Boolean)
+      })
     }
 
     // 정렬
