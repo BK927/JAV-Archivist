@@ -7,12 +7,17 @@ import {
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
 import { Download, X } from 'lucide-react'
 import { useLibraryStore } from '@/stores/libraryStore'
+import TagPopover from '@/components/library/TagPopover'
+import type { Tag } from '@/types'
+
+const QUICK_TAG_COUNT = 8
 
 interface FilterBarProps {
   totalCount: number
-  tags: string[]
+  tags: Tag[]
   unscrapedCount: number
   isScraping: boolean
   scrapeProgress: { current: number; total: number } | null
@@ -51,8 +56,40 @@ export default function FilterBar({
   const { filters, setFilters } = useLibraryStore()
   const sortKey = `${filters.sortBy}-${filters.sortOrder}`
 
+  // All selected tags across all groups
+  const selectedTags = filters.tagFilter.groups.flatMap((g) => g.tags)
+
+  // Quick tags: top N by videoCount (tags already sorted by videoCount DESC from backend)
+  const quickTags = tags.slice(0, QUICK_TAG_COUNT)
+  const remainingCount = Math.max(0, tags.length - QUICK_TAG_COUNT)
+
+  // Selected tags not in quick tags (show them in FilterBar too)
+  const quickTagNames = new Set(quickTags.map((t) => t.name))
+  const extraSelected = selectedTags.filter((t) => !quickTagNames.has(t))
+
+  // Toggle a tag in group 0 (quick tag click)
+  const toggleQuickTag = (tagName: string) => {
+    const { tagFilter } = filters
+    if (selectedTags.includes(tagName)) {
+      // Remove from whichever group it's in
+      const groups = tagFilter.groups
+        .map((g) => ({ ...g, tags: g.tags.filter((t) => t !== tagName) }))
+        .filter((g) => g.tags.length > 0)
+      setFilters({ tagFilter: { ...tagFilter, groups } })
+    } else {
+      // Add to group 0
+      const groups = [...tagFilter.groups]
+      if (groups.length === 0) {
+        groups.push({ id: crypto.randomUUID(), tags: [tagName] })
+      } else {
+        groups[0] = { ...groups[0], tags: [...groups[0].tags, tagName] }
+      }
+      setFilters({ tagFilter: { ...tagFilter, groups } })
+    }
+  }
+
   return (
-    <div className="flex items-center gap-2 px-6 py-3 border-b border-border flex-wrap">
+    <div className="flex items-center gap-2 px-6 py-3 border-b border-border overflow-hidden">
       {/* 정렬 */}
       <Select
         value={sortKey}
@@ -98,39 +135,56 @@ export default function FilterBar({
       {/* 즐겨찾기 토글 */}
       <Badge
         variant={filters.favoriteOnly ? 'default' : 'outline'}
-        className="cursor-pointer h-7 px-2 text-xs"
+        className="cursor-pointer h-7 px-2 text-xs shrink-0"
         onClick={() => setFilters({ favoriteOnly: !filters.favoriteOnly })}
       >
         ★ 즐겨찾기
       </Badge>
 
-      {/* 태그 필터 */}
-      {tags.map((tag) => (
+      <Separator orientation="vertical" className="h-5" />
+
+      {/* Quick tags */}
+      {quickTags.map((tag) => (
         <Badge
-          key={tag}
-          variant={filters.tags.includes(tag) ? 'default' : 'outline'}
-          className="cursor-pointer h-7 px-2 text-xs"
-          onClick={() => {
-            const next = filters.tags.includes(tag)
-              ? filters.tags.filter((t) => t !== tag)
-              : [...filters.tags, tag]
-            setFilters({ tags: next })
-          }}
+          key={tag.id}
+          variant={selectedTags.includes(tag.name) ? 'default' : 'outline'}
+          className="cursor-pointer h-7 px-2 text-xs shrink-0"
+          onClick={() => toggleQuickTag(tag.name)}
         >
-          {tag}
+          {tag.name}
         </Badge>
       ))}
 
+      {/* Extra selected tags (not in quick tags) */}
+      {extraSelected.map((tagName) => (
+        <Badge
+          key={tagName}
+          variant="default"
+          className="cursor-pointer h-7 px-2 text-xs shrink-0"
+          onClick={() => toggleQuickTag(tagName)}
+        >
+          {tagName}
+        </Badge>
+      ))}
+
+      {/* Tag popover */}
+      {tags.length > QUICK_TAG_COUNT && (
+        <>
+          <Separator orientation="vertical" className="h-5" />
+          <TagPopover allTags={tags} remainingCount={remainingCount} />
+        </>
+      )}
+
       {/* 스크래핑 버튼 */}
       {!isScraping && unscrapedCount > 0 && (
-        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={onScrapeAll}>
+        <Button variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={onScrapeAll}>
           <Download className="w-3 h-3 mr-1" />
           메타데이터 수집 ({unscrapedCount})
         </Button>
       )}
 
       {isScraping && scrapeProgress && (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden">
             <div
               className="h-full bg-primary transition-all"
@@ -148,7 +202,7 @@ export default function FilterBar({
 
       {/* 활성 필터 뱃지 */}
       {activeFilter && (
-        <Badge variant="default" className="h-7 px-2 text-xs gap-1">
+        <Badge variant="default" className="h-7 px-2 text-xs gap-1 shrink-0">
           {activeFilter.type}: {activeFilter.value}
           <button onClick={onClearFilter} className="ml-1">
             <X className="w-3 h-3" />
@@ -156,7 +210,7 @@ export default function FilterBar({
         </Badge>
       )}
 
-      <span className="ml-auto text-xs text-muted-foreground">
+      <span className="ml-auto text-xs text-muted-foreground shrink-0">
         {totalCount.toLocaleString()}개
       </span>
     </div>
