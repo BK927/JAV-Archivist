@@ -12,7 +12,7 @@ import type { Video } from '@/types'
 export default function LibraryPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { videos, filters, searchQuery, allTags } = useLibraryStore()
+  const { videos, filters, searchQuery } = useLibraryStore()
   const { currentVideo, setCurrentVideo } = usePlayerStore()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -49,7 +49,6 @@ export default function LibraryPage() {
     <div className="flex flex-col h-full">
       <FilterBar
         totalCount={filtered.length}
-        tags={allTags}
         activeFilter={activeFilter}
         onClearFilter={clearFilter}
       />

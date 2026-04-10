@@ -7,15 +7,11 @@ import { Separator } from '@/components/ui/separator'
 import { X, Search, Plus } from 'lucide-react'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { useTauriCommand } from '@/hooks/useTauriCommand'
-import type { Tag, TagCooccurrence } from '@/types'
+import { cn } from '@/lib/utils'
+import type { TagCooccurrence } from '@/types'
 
-interface TagPopoverProps {
-  allTags: Tag[]
-  remainingCount: number
-}
-
-export default function TagPopover({ allTags, remainingCount }: TagPopoverProps) {
-  const { filters, setFilters } = useLibraryStore()
+export default function TagPopover() {
+  const { filters, setFilters, allTags } = useLibraryStore()
   const { tagFilter } = filters
   const { run } = useTauriCommand()
 
@@ -42,7 +38,7 @@ export default function TagPopover({ allTags, remainingCount }: TagPopoverProps)
 
   // Search results: filter allTags by search text, sorted by videoCount
   const searchResults = useMemo(() => {
-    if (!search.trim()) return allTags.slice(0, 20)
+    if (!search.trim()) return allTags
     const q = search.trim().toLowerCase()
     return allTags.filter((t) => t.name.toLowerCase().includes(q))
   }, [search, allTags])
@@ -150,9 +146,14 @@ export default function TagPopover({ allTags, remainingCount }: TagPopoverProps)
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
       <PopoverPrimitive.Trigger
-        className="inline-flex items-center gap-1 h-7 px-3 rounded-md text-xs border border-primary text-primary bg-primary/10 cursor-pointer hover:bg-primary/20 transition-colors"
+        className={cn(
+          'inline-flex items-center gap-1 h-7 px-3 rounded-md text-xs cursor-pointer transition-colors whitespace-nowrap',
+          selectedTagSet.size > 0
+            ? 'border border-primary text-primary bg-primary/10 hover:bg-primary/20'
+            : 'border border-border bg-secondary hover:bg-secondary/80'
+        )}
       >
-        +{remainingCount}개 {open ? '▴' : '▾'}
+        태그 필터{selectedTagSet.size > 0 && ` (${selectedTagSet.size})`} {open ? '▴' : '▾'}
       </PopoverPrimitive.Trigger>
 
       <PopoverPrimitive.Portal>
@@ -177,7 +178,7 @@ export default function TagPopover({ allTags, remainingCount }: TagPopoverProps)
             <div className="max-h-48 overflow-y-auto rounded-md border border-border mb-3">
               {/* Search results section */}
               <div className="px-2.5 pt-1.5 pb-0.5 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                {search.trim() ? '검색 결과' : '인기 태그'}
+                {search.trim() ? '검색 결과' : '전체 태그'}
               </div>
               {searchResults.length === 0 && (
                 <div className="px-2.5 py-2 text-xs text-muted-foreground">결과 없음</div>

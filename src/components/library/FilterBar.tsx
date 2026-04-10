@@ -11,13 +11,10 @@ import { Separator } from '@/components/ui/separator'
 import { X } from 'lucide-react'
 import { useLibraryStore } from '@/stores/libraryStore'
 import TagPopover from '@/components/library/TagPopover'
-import type { Tag, FilterState } from '@/types'
-
-const QUICK_TAG_COUNT = 8
+import type { FilterState } from '@/types'
 
 interface FilterBarProps {
   totalCount: number
-  tags: Tag[]
   activeFilter: { type: string; value: string } | null
   onClearFilter: () => void
 }
@@ -47,45 +44,14 @@ const SCRAPE_STATUS_LABELS: Record<string, string> = {
 
 export default function FilterBar({
   totalCount,
-  tags,
   activeFilter,
   onClearFilter,
 }: FilterBarProps) {
   const { filters, setFilters, selectionMode, setSelectionMode } = useLibraryStore()
   const sortKey = `${filters.sortBy}-${filters.sortOrder}`
 
-  // All selected tags across all groups
-  const selectedTagSet = new Set(filters.tagFilter.groups.flatMap((g) => g.tags))
-
-  // Quick tags: top N by videoCount (tags already sorted by videoCount DESC from backend)
-  const quickTags = tags.slice(0, QUICK_TAG_COUNT)
-  const remainingCount = Math.max(0, tags.length - QUICK_TAG_COUNT)
-
-  // Selected tags not in quick tags (show them in FilterBar too)
-  const quickTagNames = new Set(quickTags.map((t) => t.name))
-  const extraSelected = [...selectedTagSet].filter((t) => !quickTagNames.has(t))
-
-  // Toggle a tag (quick tag click) — adds to first group, removes from any
-  const toggleQuickTag = (tagName: string) => {
-    const { tagFilter } = filters
-    if (selectedTagSet.has(tagName)) {
-      const groups = tagFilter.groups
-        .map((g) => ({ ...g, tags: g.tags.filter((t) => t !== tagName) }))
-        .filter((g) => g.tags.length > 0)
-      setFilters({ tagFilter: { ...tagFilter, groups } })
-    } else {
-      const groups = [...tagFilter.groups]
-      if (groups.length === 0) {
-        groups.push({ id: crypto.randomUUID(), tags: [tagName] })
-      } else {
-        groups[0] = { ...groups[0], tags: [...groups[0].tags, tagName] }
-      }
-      setFilters({ tagFilter: { ...tagFilter, groups } })
-    }
-  }
-
   return (
-    <div className="flex items-center gap-2 px-6 py-3 border-b border-border overflow-hidden">
+    <div className="flex items-center gap-2 px-6 py-3 border-b border-border">
       {/* 정렬 */}
       <Select
         value={sortKey}
@@ -98,8 +64,8 @@ export default function FilterBar({
           setFilters({ sortBy, sortOrder })
         }}
       >
-        <SelectTrigger className="w-36 h-7 text-xs bg-secondary border-border">
-          <SelectValue placeholder={SORT_LABELS[sortKey]}>{SORT_LABELS[sortKey]}</SelectValue>
+        <SelectTrigger className="w-auto h-7 text-xs bg-secondary border-border">
+          <SelectValue>{SORT_LABELS[sortKey]}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="addedAt-desc">최근 추가순</SelectItem>
@@ -118,8 +84,8 @@ export default function FilterBar({
           setFilters({ watchedFilter: v as typeof filters.watchedFilter })
         }
       >
-        <SelectTrigger className="w-24 h-7 text-xs bg-secondary border-border">
-          <SelectValue placeholder={WATCHED_LABELS[filters.watchedFilter]}>{WATCHED_LABELS[filters.watchedFilter]}</SelectValue>
+        <SelectTrigger className="w-auto h-7 text-xs bg-secondary border-border">
+          <SelectValue>{WATCHED_LABELS[filters.watchedFilter]}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">전체</SelectItem>
@@ -142,7 +108,7 @@ export default function FilterBar({
         value={filters.scrapeStatusFilter}
         onValueChange={(v) => setFilters({ scrapeStatusFilter: v as FilterState['scrapeStatusFilter'] })}
       >
-        <SelectTrigger className="w-28 h-7 text-xs bg-secondary border-border">
+        <SelectTrigger className="w-auto h-7 text-xs bg-secondary border-border">
           <SelectValue>{SCRAPE_STATUS_LABELS[filters.scrapeStatusFilter]}</SelectValue>
         </SelectTrigger>
         <SelectContent>
@@ -156,37 +122,8 @@ export default function FilterBar({
 
       <Separator orientation="vertical" className="h-5" />
 
-      {/* Quick tags */}
-      {quickTags.map((tag) => (
-        <Badge
-          key={tag.id}
-          variant={selectedTagSet.has(tag.name) ? 'default' : 'outline'}
-          className="cursor-pointer h-7 px-2 text-xs shrink-0"
-          onClick={() => toggleQuickTag(tag.name)}
-        >
-          {tag.name}
-        </Badge>
-      ))}
-
-      {/* Extra selected tags (not in quick tags) */}
-      {extraSelected.map((tagName) => (
-        <Badge
-          key={tagName}
-          variant="default"
-          className="cursor-pointer h-7 px-2 text-xs shrink-0"
-          onClick={() => toggleQuickTag(tagName)}
-        >
-          {tagName}
-        </Badge>
-      ))}
-
-      {/* Tag popover */}
-      {tags.length > QUICK_TAG_COUNT && (
-        <>
-          <Separator orientation="vertical" className="h-5" />
-          <TagPopover allTags={tags} remainingCount={remainingCount} />
-        </>
-      )}
+      {/* 태그 필터 */}
+      <TagPopover />
 
       {/* 활성 필터 뱃지 */}
       {activeFilter && (
