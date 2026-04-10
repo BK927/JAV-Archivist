@@ -12,12 +12,10 @@ import type { Video, Tag } from '@/types'
 export default function LibraryPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { videos, filters, searchQuery, setVideos } = useLibraryStore()
+  const { videos, filters, searchQuery } = useLibraryStore()
   const { currentVideo, setCurrentVideo } = usePlayerStore()
   const { run } = useTauriCommand()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [isScraping, setIsScraping] = useState(false)
-  const [scrapeProgress, setScrapeProgress] = useState<{ current: number; total: number } | null>(null)
   const [allTags, setAllTags] = useState<Tag[]>([])
 
   // URL query param filter (memoized to avoid unnecessary useMemo recalculations)
@@ -32,50 +30,12 @@ export default function LibraryPage() {
   const clearFilter = () => setSearchParams({})
 
   const filtered = useFilteredVideos(videos, filters, searchQuery, activeFilter)
-  const unscrapedCount = videos.filter((v) => v.scrapeStatus === 'not_scraped' && v.code !== '?').length
 
   // videos.length를 의존성으로 사용해 개별 비디오 업데이트 시 불필요한 재페칭 방지
   const videoCount = videos.length
   useEffect(() => {
     run<Tag[]>('get_tags', {}, []).then(setAllTags)
   }, [run, videoCount])
-
-  // Listen for scrape events
-  useEffect(() => {
-    let unlisten: (() => void) | undefined
-    let cancelled = false
-
-    async function setup() {
-      try {
-        const { listen } = await import('@tauri-apps/api/event')
-        if (cancelled) return
-
-        const u1 = await listen<{ current: number; total: number; video?: Video }>('scrape-progress', (e) => {
-          setIsScraping(true)
-          setScrapeProgress(e.payload)
-          if (e.payload.video) {
-            const current = useLibraryStore.getState().videos
-            setVideos(current.map((v) => v.id === e.payload.video!.id ? e.payload.video! : v))
-          }
-        })
-        if (cancelled) { u1(); return }
-
-        const u2 = await listen('scrape-complete', () => {
-          setIsScraping(false)
-          setScrapeProgress(null)
-          run<Video[]>('get_videos', {}, []).then(setVideos)
-          run<Tag[]>('get_tags', {}, []).then(setAllTags)
-        })
-        if (cancelled) { u1(); u2(); return }
-
-        unlisten = () => { u1(); u2() }
-      } catch {
-        // Not in Tauri env
-      }
-    }
-    setup()
-    return () => { cancelled = true; unlisten?.() }
-  }, [run, setVideos])
 
   useEffect(() => {
     if (id) {
@@ -85,23 +45,6 @@ export default function LibraryPage() {
       setCurrentVideo(null)
     }
   }, [id, videos, setCurrentVideo])
-
-  const handleScrapeAll = async () => {
-    setIsScraping(true)
-    setScrapeProgress({ current: 0, total: unscrapedCount })
-    try {
-      await run('scrape_all_new', {}, undefined)
-    } catch {
-      setIsScraping(false)
-      setScrapeProgress(null)
-    }
-  }
-
-  const handleCancelScrape = async () => {
-    await run('cancel_scrape', {}, undefined)
-    setIsScraping(false)
-    setScrapeProgress(null)
-  }
 
   const handleSelect = (video: Video) => navigate(`/library/${video.id}`)
   const handleClose = () => navigate('/library')
@@ -115,11 +58,6 @@ export default function LibraryPage() {
       <FilterBar
         totalCount={filtered.length}
         tags={allTags}
-        unscrapedCount={unscrapedCount}
-        isScraping={isScraping}
-        scrapeProgress={scrapeProgress}
-        onScrapeAll={handleScrapeAll}
-        onCancelScrape={handleCancelScrape}
         activeFilter={activeFilter}
         onClearFilter={clearFilter}
       />

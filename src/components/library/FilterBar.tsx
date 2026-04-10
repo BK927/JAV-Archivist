@@ -8,21 +8,16 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
-import { Download, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { useLibraryStore } from '@/stores/libraryStore'
 import TagPopover from '@/components/library/TagPopover'
-import type { Tag } from '@/types'
+import type { Tag, FilterState } from '@/types'
 
 const QUICK_TAG_COUNT = 8
 
 interface FilterBarProps {
   totalCount: number
   tags: Tag[]
-  unscrapedCount: number
-  isScraping: boolean
-  scrapeProgress: { current: number; total: number } | null
-  onScrapeAll: () => void
-  onCancelScrape: () => void
   activeFilter: { type: string; value: string } | null
   onClearFilter: () => void
 }
@@ -42,18 +37,21 @@ const WATCHED_LABELS: Record<string, string> = {
   watched: '시청함',
 }
 
+const SCRAPE_STATUS_LABELS: Record<string, string> = {
+  all: '수집 상태: 전체',
+  not_scraped: '미수집',
+  partial: '부분 수집',
+  not_found: '실패',
+  complete: '완료',
+}
+
 export default function FilterBar({
   totalCount,
   tags,
-  unscrapedCount,
-  isScraping,
-  scrapeProgress,
-  onScrapeAll,
-  onCancelScrape,
   activeFilter,
   onClearFilter,
 }: FilterBarProps) {
-  const { filters, setFilters } = useLibraryStore()
+  const { filters, setFilters, selectionMode, setSelectionMode } = useLibraryStore()
   const sortKey = `${filters.sortBy}-${filters.sortOrder}`
 
   // All selected tags across all groups
@@ -139,6 +137,23 @@ export default function FilterBar({
         ★ 즐겨찾기
       </Badge>
 
+      {/* 수집 상태 필터 */}
+      <Select
+        value={filters.scrapeStatusFilter}
+        onValueChange={(v) => setFilters({ scrapeStatusFilter: v as FilterState['scrapeStatusFilter'] })}
+      >
+        <SelectTrigger className="w-28 h-7 text-xs bg-secondary border-border">
+          <SelectValue>{SCRAPE_STATUS_LABELS[filters.scrapeStatusFilter]}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="all">전체</SelectItem>
+          <SelectItem value="not_scraped">미수집</SelectItem>
+          <SelectItem value="partial">부분 수집</SelectItem>
+          <SelectItem value="not_found">실패</SelectItem>
+          <SelectItem value="complete">완료</SelectItem>
+        </SelectContent>
+      </Select>
+
       <Separator orientation="vertical" className="h-5" />
 
       {/* Quick tags */}
@@ -173,31 +188,6 @@ export default function FilterBar({
         </>
       )}
 
-      {/* 스크래핑 버튼 */}
-      {!isScraping && unscrapedCount > 0 && (
-        <Button variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={onScrapeAll}>
-          <Download className="w-3 h-3 mr-1" />
-          메타데이터 수집 ({unscrapedCount})
-        </Button>
-      )}
-
-      {isScraping && scrapeProgress && (
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="w-24 h-1.5 bg-secondary rounded-full overflow-hidden">
-            <div
-              className="h-full bg-primary transition-all"
-              style={{ width: `${(scrapeProgress.current / scrapeProgress.total) * 100}%` }}
-            />
-          </div>
-          <span className="text-xs text-muted-foreground">
-            {scrapeProgress.current}/{scrapeProgress.total}
-          </span>
-          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={onCancelScrape}>
-            <X className="w-3 h-3" />
-          </Button>
-        </div>
-      )}
-
       {/* 활성 필터 뱃지 */}
       {activeFilter && (
         <Badge variant="default" className="h-7 px-2 text-xs gap-1 shrink-0">
@@ -208,7 +198,17 @@ export default function FilterBar({
         </Badge>
       )}
 
-      <span className="ml-auto text-xs text-muted-foreground shrink-0">
+      {/* 선택 모드 토글 */}
+      <Button
+        variant={selectionMode ? 'default' : 'outline'}
+        size="sm"
+        className="ml-auto h-7 text-xs shrink-0"
+        onClick={() => setSelectionMode(!selectionMode)}
+      >
+        {selectionMode ? '선택 해제' : '☑ 선택'}
+      </Button>
+
+      <span className="text-xs text-muted-foreground shrink-0">
         {totalCount.toLocaleString()}개
       </span>
     </div>
