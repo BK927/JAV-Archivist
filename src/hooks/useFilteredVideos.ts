@@ -51,6 +51,11 @@ export function useFilteredVideos(
       result = result.filter((v) => v.favorite)
     }
 
+    // 스크레이프 상태 필터
+    if (filters.scrapeStatusFilter !== 'all') {
+      result = result.filter((v) => v.scrapeStatus === filters.scrapeStatusFilter)
+    }
+
     // 태그 그룹 필터
     const { groups, groupOperator } = filters.tagFilter
     const activeGroups = groups.filter((g) => g.tags.length > 0)

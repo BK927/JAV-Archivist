@@ -9,6 +9,7 @@ const DEFAULT_FILTERS: FilterState = {
   watchedFilter: 'all',
   favoriteOnly: false,
   tagFilter: { groups: [], groupOperator: 'AND' },
+  scrapeStatusFilter: 'all',
 }
 
 beforeEach(() => {

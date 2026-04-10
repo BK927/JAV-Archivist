@@ -80,6 +80,7 @@ export interface FilterState {
   watchedFilter: 'all' | 'watched' | 'unwatched'
   favoriteOnly: boolean
   tagFilter: TagFilter
+  scrapeStatusFilter: ScrapeStatus | 'all'
 }
 
 export interface AppSettings {

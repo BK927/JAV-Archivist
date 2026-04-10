@@ -6,10 +6,16 @@ interface LibraryStore {
   filters: FilterState
   searchQuery: string
   isScanning: boolean
+  selectionMode: boolean
+  selectedIds: Set<string>
   setVideos: (videos: Video[]) => void
   setFilters: (filters: Partial<FilterState>) => void
   setSearchQuery: (q: string) => void
   setScanning: (v: boolean) => void
+  setSelectionMode: (v: boolean) => void
+  toggleSelected: (id: string) => void
+  selectAll: (ids: string[]) => void
+  clearSelection: () => void
 }
 
 const DEFAULT_FILTERS: FilterState = {
@@ -18,6 +24,7 @@ const DEFAULT_FILTERS: FilterState = {
   watchedFilter: 'all',
   favoriteOnly: false,
   tagFilter: { groups: [], groupOperator: 'AND' },
+  scrapeStatusFilter: 'all',
 }
 
 export const useLibraryStore = create<LibraryStore>((set, get) => ({
@@ -25,9 +32,21 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   filters: DEFAULT_FILTERS,
   searchQuery: '',
   isScanning: false,
+  selectionMode: false,
+  selectedIds: new Set(),
   setVideos: (videos) => set({ videos }),
   setFilters: (partial) =>
     set({ filters: { ...get().filters, ...partial } }),
   setSearchQuery: (searchQuery) => set({ searchQuery }),
   setScanning: (isScanning) => set({ isScanning }),
+  setSelectionMode: (selectionMode) =>
+    set({ selectionMode, selectedIds: selectionMode ? get().selectedIds : new Set() }),
+  toggleSelected: (id) => {
+    const next = new Set(get().selectedIds)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    set({ selectedIds: next })
+  },
+  selectAll: (ids) => set({ selectedIds: new Set(ids) }),
+  clearSelection: () => set({ selectedIds: new Set() }),
 }))
