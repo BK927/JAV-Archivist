@@ -20,7 +20,7 @@ export default function VideoCard({ video, onClick }: VideoCardProps) {
       onMouseLeave={() => setHovered(false)}
     >
       {/* 썸네일 영역 */}
-      <div className="relative aspect-[2/3] bg-muted overflow-hidden">
+      <div className="relative aspect-[800/538] bg-muted overflow-hidden">
         {video.thumbnailPath ? (
           <img
             src={assetUrl(video.thumbnailPath)}
