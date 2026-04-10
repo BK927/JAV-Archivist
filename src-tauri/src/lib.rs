@@ -4,6 +4,7 @@ mod models;
 mod player;
 mod scanner;
 mod scraper;
+mod watcher;
 
 use models::{Settings, ScrapeStatus, Video, Actor, Maker, Series as SeriesModel, Tag, TagCooccurrence, SampleImage};
 use std::collections::BTreeSet;
