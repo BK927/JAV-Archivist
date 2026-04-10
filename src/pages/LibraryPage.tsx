@@ -7,7 +7,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useFilteredVideos } from '@/hooks/useFilteredVideos'
 import { useTauriCommand } from '@/hooks/useTauriCommand'
-import type { Video } from '@/types'
+import type { Video, Tag } from '@/types'
 
 export default function LibraryPage() {
   const { id } = useParams()
@@ -18,6 +18,7 @@ export default function LibraryPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [isScraping, setIsScraping] = useState(false)
   const [scrapeProgress, setScrapeProgress] = useState<{ current: number; total: number } | null>(null)
+  const [allTags, setAllTags] = useState<Tag[]>([])
 
   // URL query param filter (memoized to avoid unnecessary useMemo recalculations)
   const activeFilter = useMemo(() => {
@@ -31,12 +32,15 @@ export default function LibraryPage() {
   const clearFilter = () => setSearchParams({})
 
   const filtered = useFilteredVideos(videos, filters, searchQuery, activeFilter)
-  const allTags = [...new Set(videos.flatMap((v) => v.tags))]
   const unscrapedCount = videos.filter((v) => v.scrapeStatus === 'not_scraped' && v.code !== '?').length
 
   useEffect(() => {
     run<Video[]>('scan_library', {}, []).then(setVideos)
   }, [run, setVideos])
+
+  useEffect(() => {
+    run<Tag[]>('get_tags', {}, []).then(setAllTags)
+  }, [run, videos])
 
   // Listen for scrape events
   useEffect(() => {
