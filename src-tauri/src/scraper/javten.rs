@@ -82,7 +82,9 @@ pub(crate) fn parse_javten_page(html: &str) -> Result<ScrapedMetadata, ScrapeErr
             let mut meta = ScrapedMetadata::default();
 
             meta.title = v["name"].as_str().map(|s| s.trim().to_string());
-            meta.cover_url = v["image"].as_str().map(|s| s.to_string());
+            meta.cover_url = v["image"]
+                .as_str()
+                .and_then(super::normalize_media_url);
 
             if let Some(genres) = v["genre"].as_array() {
                 meta.tags = genres
@@ -103,6 +105,15 @@ pub(crate) fn parse_javten_page(html: &str) -> Result<ScrapedMetadata, ScrapeErr
                 .map(|s| s.trim().to_string());
 
             meta.maker = seller.clone();
+
+            let gallery_sel = Selector::parse("a[data-fancybox='gallery'][href]").unwrap();
+            for el in doc.select(&gallery_sel) {
+                if let Some(href) = el.value().attr("href") {
+                    if let Some(url) = super::normalize_media_url(href) {
+                        meta.sample_image_urls.push(url);
+                    }
+                }
+            }
 
             if meta.has_any_field() {
                 return Ok(meta);
@@ -191,14 +202,14 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
                     code,
                     meta.title
                 );
-                Ok(meta)
-            }
-            Err(e) => {
-                tracing::error!("javten: parse failed for code={}: {}", code, e);
-                Err(e)
-            }
-        };
-    }
+            Ok(meta)
+        }
+        Err(e) => {
+            tracing::warn!("javten: parse failed for code={}: {}", code, e);
+            Err(e)
+        }
+    };
+}
 
     Err(last_err)
 }
@@ -248,6 +259,40 @@ mod tests {
         assert_eq!(meta.released_at.as_deref(), Some("2024-03-15"));
         assert_eq!(meta.tags, vec!["フェラ", "美人", "素人"]);
         assert_eq!(meta.maker.as_deref(), Some("テストセラー"));
+    }
+
+    #[test]
+    fn test_parse_javten_page_collects_protocol_relative_gallery_images() {
+        let html = r#"<!DOCTYPE html>
+<html>
+<head>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Movie",
+  "name": "FC2 테스트",
+  "image": "https://cdn.fc2.com/test/thumbnail.jpg",
+  "duration": "PT12M",
+  "datePublished": "2024-03-15"
+}
+</script>
+</head>
+<body>
+<a href="/seller/6273/%E3%83%86%E3%82%B9%E3%83%88%E3%82%BB%E3%83%A9%E3%83%BC">テストセラー</a>
+<div class="video-img-box mb-3">
+  <a data-fancybox="gallery" href="//contents-thumbnail2.fc2.com/w1280/storage200000.contents.fc2.com/file/test/sample01.jpg">
+    sample 1
+  </a>
+</div>
+</body>
+</html>"#;
+
+        let meta = parse_javten_page(html).unwrap();
+
+        assert_eq!(
+            meta.sample_image_urls,
+            vec!["https://contents-thumbnail2.fc2.com/w1280/storage200000.contents.fc2.com/file/test/sample01.jpg"]
+        );
     }
 
     #[test]

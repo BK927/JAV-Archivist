@@ -240,12 +240,20 @@ fn upsert_videos_inner(conn: &Connection, videos: &[Video]) -> Result<()> {
             )
             .ok()
         } else {
-            None
+            // code='?' — match by file path instead
+            video.files.iter().find_map(|f| {
+                conn.query_row(
+                    "SELECT video_id FROM video_files WHERE path = ?1",
+                    [&f.path],
+                    |row| row.get::<_, String>(0),
+                )
+                .ok()
+            })
         };
 
         let video_id = match existing_id {
             Some(id) => {
-                // Existing code: update files only, preserve metadata
+                // Existing: update files only, preserve metadata
                 conn.execute("DELETE FROM video_files WHERE video_id = ?1", [&id])?;
                 id
             }
@@ -279,6 +287,13 @@ fn upsert_videos_inner(conn: &Connection, videos: &[Video]) -> Result<()> {
             )?;
         }
     }
+
+    // Clean up orphaned videos (no files — caused by previous code='?' duplication bug)
+    conn.execute("DELETE FROM sample_images WHERE video_id NOT IN (SELECT DISTINCT video_id FROM video_files)", [])?;
+    conn.execute("DELETE FROM video_tags WHERE video_id NOT IN (SELECT DISTINCT video_id FROM video_files)", [])?;
+    conn.execute("DELETE FROM video_actors WHERE video_id NOT IN (SELECT DISTINCT video_id FROM video_files)", [])?;
+    conn.execute("DELETE FROM videos WHERE id NOT IN (SELECT DISTINCT video_id FROM video_files)", [])?;
+
     Ok(())
 }
 
@@ -586,6 +601,15 @@ pub fn update_video_metadata(
                 video_id,
             ],
         )?;
+
+        if let (Some(series_id), Some(thumbnail_path)) = (series_id.as_deref(), thumbnail_path) {
+            conn.execute(
+                "UPDATE series
+                 SET cover_path = COALESCE(cover_path, ?1)
+                 WHERE id = ?2",
+                params![thumbnail_path, series_id],
+            )?;
+        }
 
         for detail in actor_details {
             let actor_id = Uuid::new_v4().to_string();
@@ -1229,5 +1253,40 @@ mod tests {
         assert_eq!(images.len(), 2);
         assert_eq!(images[0].path, "/samples/abc123_01.jpg");
         assert_eq!(images[1].sort_order, 1);
+    }
+
+    #[test]
+    fn test_update_video_metadata_sets_series_cover_from_thumbnail() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let video = make_test_video("SONE-001", "Original", "C:/test.mp4");
+        let id = video.id.clone();
+        upsert_videos(&conn, &[video]).unwrap();
+
+        update_video_metadata(
+            &conn,
+            &id,
+            Some("Scraped Title"),
+            Some("C:/covers/sone001.jpg"),
+            Some("SONE"),
+            None,
+            None,
+            &[],
+            &[],
+            None,
+            &[],
+            ScrapeStatus::Complete,
+        ).unwrap();
+
+        let cover_path: Option<String> = conn
+            .query_row(
+                "SELECT cover_path FROM series WHERE name = 'SONE'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(cover_path.as_deref(), Some("C:/covers/sone001.jpg"));
     }
 }

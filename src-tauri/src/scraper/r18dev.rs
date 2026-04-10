@@ -8,6 +8,7 @@ struct R18Response {
     jacket_full_url: Option<String>,
     actresses: Option<Vec<R18Actress>>,
     categories: Option<Vec<R18Category>>,
+    gallery: Option<Vec<R18GalleryImage>>,
     series_name_en: Option<String>,
     maker_name_en: Option<String>,
     runtime_mins: Option<u64>,
@@ -27,6 +28,12 @@ struct R18Category {
     name_en: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct R18GalleryImage {
+    image_full: Option<String>,
+    image_thumb: Option<String>,
+}
+
 pub(crate) fn parse_r18_json(json: &str) -> Result<ScrapedMetadata, ScrapeError> {
     let resp: R18Response = serde_json::from_str(json)
         .map_err(|e| ScrapeError::ParseError(e.to_string()))?;
@@ -42,7 +49,9 @@ pub(crate) fn parse_r18_json(json: &str) -> Result<ScrapedMetadata, ScrapeError>
             a.name_romaji.map(|name| ScrapedActor {
                 name,
                 name_kanji: a.name_kanji,
-                photo_url: a.image_url,
+                photo_url: a.image_url
+                    .as_deref()
+                    .and_then(super::normalize_dmm_actor_url),
             })
         })
         .collect();
@@ -54,9 +63,20 @@ pub(crate) fn parse_r18_json(json: &str) -> Result<ScrapedMetadata, ScrapeError>
         .filter_map(|c| c.name_ja.or(c.name_en))
         .collect();
 
+    let sample_image_urls = resp
+        .gallery
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|g| g.image_full.or(g.image_thumb))
+        .filter_map(|url| super::normalize_media_url(&url))
+        .collect();
+
     Ok(ScrapedMetadata {
         title: resp.title_ja.or(resp.title_en),
-        cover_url: resp.jacket_full_url,
+        cover_url: resp
+            .jacket_full_url
+            .as_deref()
+            .and_then(super::normalize_media_url),
         actors,
         actor_details,
         tags,
@@ -64,6 +84,7 @@ pub(crate) fn parse_r18_json(json: &str) -> Result<ScrapedMetadata, ScrapeError>
         maker: resp.maker_name_en,
         duration: resp.runtime_mins.map(|m| m * 60),
         released_at: resp.release_date,
+        sample_image_urls,
         ..Default::default()
     })
 }
@@ -96,7 +117,7 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
         return Err(ScrapeError::RateLimited);
     }
     if status != 200 {
-        tracing::error!("r18dev: unexpected HTTP {} for code={}", status, code);
+        tracing::warn!("r18dev: unexpected HTTP {} for code={}", status, code);
         return Err(ScrapeError::NetworkError(format!("HTTP {}", status)));
     }
 
@@ -111,7 +132,7 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
             Ok(meta)
         }
         Err(e) => {
-            tracing::error!("r18dev: parse failed for code={}: {}", code, e);
+            tracing::warn!("r18dev: parse failed for code={}: {}", code, e);
             Err(e)
         }
     }
@@ -149,6 +170,35 @@ mod tests {
         let meta = parse_r18_json(json).unwrap();
         assert!(meta.title.is_none());
         assert!(meta.actors.is_empty());
+    }
+
+    #[test]
+    fn test_parse_r18_json_normalizes_relative_actor_images_and_gallery() {
+        let json = r#"{
+            "title_ja": "테스트 작품",
+            "jacket_full_url": "https://pics.dmm.co.jp/mono/movie/adult/test/testpl.jpg",
+            "actresses": [{
+                "name_romaji": "Kana Yume",
+                "name_kanji": "結夢かな",
+                "image_url": "yume_kana.jpg"
+            }],
+            "gallery": [{
+                "image_full": "https://pics.dmm.co.jp/digital/video/test/testjp-1.jpg",
+                "image_thumb": "https://pics.dmm.co.jp/digital/video/test/testjs-1.jpg"
+            }]
+        }"#;
+
+        let meta = parse_r18_json(json).unwrap();
+
+        assert_eq!(meta.actor_details.len(), 1);
+        assert_eq!(
+            meta.actor_details[0].photo_url.as_deref(),
+            Some("https://pics.dmm.co.jp/mono/actjpgs/yume_kana.jpg")
+        );
+        assert_eq!(
+            meta.sample_image_urls,
+            vec!["https://pics.dmm.co.jp/digital/video/test/testjp-1.jpg"]
+        );
     }
 
     #[test]

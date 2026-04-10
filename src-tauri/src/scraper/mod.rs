@@ -23,6 +23,49 @@ pub struct ScrapeResult {
     pub status: ScrapeStatus,
 }
 
+pub(crate) fn normalize_media_url(url: &str) -> Option<String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        return Some(trimmed.to_string());
+    }
+
+    if trimmed.starts_with("//") {
+        return Some(format!("https:{}", trimmed));
+    }
+
+    None
+}
+
+pub(crate) fn normalize_media_url_with_base(url: &str, https_base: &str) -> Option<String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    normalize_media_url(trimmed).or_else(|| {
+        trimmed
+            .strip_prefix('/')
+            .map(|path| format!("{}/{}", https_base.trim_end_matches('/'), path))
+    })
+}
+
+pub(crate) fn normalize_dmm_actor_url(url: &str) -> Option<String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    normalize_media_url(trimmed).or_else(|| {
+        (!trimmed.contains('/')).then(|| {
+            format!("https://pics.dmm.co.jp/mono/actjpgs/{}", trimmed)
+        })
+    })
+}
+
 fn merge(base: &mut ScrapedMetadata, incoming: ScrapedMetadata) {
     if base.title.is_none() { base.title = incoming.title; }
     if base.cover_url.is_none() { base.cover_url = incoming.cover_url; }
@@ -135,6 +178,7 @@ impl ScrapePipeline {
         let results = futures::future::join_all(fetch_futures).await;
 
         let mut merged = ScrapedMetadata::default();
+        let mut failed_sources = Vec::new();
         for (source, result) in sources.iter().zip(results) {
             match result {
                 Ok(meta) => {
@@ -145,7 +189,7 @@ impl ScrapePipeline {
                     tracing::warn!("scrape_one: rate limited by source={:?} for code={}", source, code);
                 }
                 Err(e) => {
-                    tracing::error!("scrape_one: source={:?} failed for code={}: {:?}", source, code, e);
+                    failed_sources.push((format!("{:?}", source), format!("{:?}", e)));
                 }
             }
         }
@@ -191,6 +235,28 @@ impl ScrapePipeline {
         } else {
             ScrapeStatus::NotFound
         };
+
+        for (source, error) in failed_sources {
+            match status {
+                ScrapeStatus::Complete | ScrapeStatus::Partial => {
+                    tracing::warn!(
+                        "scrape_one: source={} failed for code={} but overall status={:?}: {}",
+                        source,
+                        code,
+                        status,
+                        error
+                    );
+                }
+                ScrapeStatus::NotFound | ScrapeStatus::NotScraped => {
+                    tracing::error!(
+                        "scrape_one: source={} failed for code={}: {}",
+                        source,
+                        code,
+                        error
+                    );
+                }
+            }
+        }
 
         tracing::info!("scrape_one: code={} final status={:?}", code, status);
 

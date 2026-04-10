@@ -21,7 +21,10 @@ pub(crate) fn parse_javbus_html(html: &str, code: &str) -> Result<ScrapedMetadat
     // 2. Cover image
     let cover_sel = Selector::parse("a.bigImage img").unwrap();
     if let Some(el) = document.select(&cover_sel).next() {
-        meta.cover_url = el.value().attr("src").map(|s| s.to_string());
+        meta.cover_url = el
+            .value()
+            .attr("src")
+            .and_then(super::normalize_media_url);
     }
 
     // 3. Info fields from span.header
@@ -69,7 +72,7 @@ pub(crate) fn parse_javbus_html(html: &str, code: &str) -> Result<ScrapedMetadat
             .next()
             .and_then(|img| img.value().attr("src"))
             .filter(|s| !s.is_empty())
-            .map(|s| s.to_string());
+            .and_then(super::normalize_media_url);
 
         let photo_url = img_src.or_else(|| {
             el.value().attr("href").and_then(|href| {
@@ -100,7 +103,9 @@ pub(crate) fn parse_javbus_html(html: &str, code: &str) -> Result<ScrapedMetadat
     let sample_sel = Selector::parse("#sample-waterfall a.sample-box").unwrap();
     for el in document.select(&sample_sel) {
         if let Some(href) = el.value().attr("href") {
-            meta.sample_image_urls.push(href.to_string());
+            if let Some(url) = super::normalize_media_url(href) {
+                meta.sample_image_urls.push(url);
+            }
         }
     }
 
@@ -129,8 +134,12 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
         tracing::warn!("javbus: rate limited (HTTP {}) for code={}", status, code);
         return Err(ScrapeError::RateLimited);
     }
+    if status == 301 || status == 302 {
+        tracing::warn!("javbus: redirected (HTTP {}) for code={}", status, code);
+        return Err(ScrapeError::NotFound);
+    }
     if status != 200 {
-        tracing::error!("javbus: unexpected HTTP {} for code={}", status, code);
+        tracing::warn!("javbus: unexpected HTTP {} for code={}", status, code);
         return Err(ScrapeError::NetworkError(format!("HTTP {}", status)));
     }
 
@@ -150,7 +159,7 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
             Ok(meta)
         }
         Err(e) => {
-            tracing::error!("javbus: parse failed for code={}: {}", code, e);
+            tracing::warn!("javbus: parse failed for code={}: {}", code, e);
             Err(e)
         }
     }

@@ -1,4 +1,5 @@
 import { Film } from 'lucide-react'
+import { assetUrl } from '@/lib/utils'
 import type { Series } from '@/types'
 
 interface SeriesGridProps {
@@ -20,7 +21,7 @@ export default function SeriesGrid({ series, onSelect }: SeriesGridProps) {
         >
           <div className="aspect-video bg-secondary flex items-center justify-center">
             {s.coverPath ? (
-              <img src={s.coverPath} alt={s.name} className="w-full h-full object-cover" />
+              <img src={assetUrl(s.coverPath)} alt={s.name} className="w-full h-full object-cover" />
             ) : (
               <Film className="w-8 h-8 text-muted-foreground/30" />
             )}

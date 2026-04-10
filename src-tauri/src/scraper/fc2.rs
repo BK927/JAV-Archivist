@@ -12,25 +12,65 @@ pub(crate) fn parse_fc2_html(html: &str) -> Result<ScrapedMetadata, ScrapeError>
 
     // 1. Parse JSON-LD for title, cover, seller
     let json_ld_sel = Selector::parse("script[type='application/ld+json']").unwrap();
-    if let Some(el) = document.select(&json_ld_sel).next() {
+    for el in document.select(&json_ld_sel) {
         let json_text = el.inner_html();
         if let Ok(value) = serde_json::from_str::<serde_json::Value>(&json_text) {
-            meta.title = value["name"].as_str().map(|s| s.to_string());
-            meta.cover_url = value["image"]["url"].as_str().map(|s| s.to_string());
+            if meta.title.is_none() {
+                meta.title = value["name"].as_str().map(|s| s.to_string());
+            }
+            if meta.cover_url.is_none() {
+                meta.cover_url = value["image"]["url"]
+                    .as_str()
+                    .or_else(|| value["image"].as_str())
+                    .and_then(|s| super::normalize_media_url_with_base(s, "https://adult.contents.fc2.com"));
+            }
 
             // Extract seller username from brand.url: ".../users/testuser/" → "testuser"
-            if let Some(brand_url) = value["brand"]["url"].as_str() {
-                if let Some(username) = brand_url
-                    .trim_end_matches('/')
-                    .rsplit('/')
-                    .next()
-                {
-                    if !username.is_empty() {
-                        meta.maker = Some(username.to_string());
+            if meta.maker.is_none() {
+                if let Some(brand_url) = value["brand"]["url"].as_str() {
+                    if let Some(username) = brand_url
+                        .trim_end_matches('/')
+                        .rsplit('/')
+                        .next()
+                    {
+                        if !username.is_empty() {
+                            meta.maker = Some(username.to_string());
+                        }
+                    }
+                } else if let Some(brand_name) = value["brand"]["name"].as_str() {
+                    let brand_name = brand_name.trim();
+                    if !brand_name.is_empty() {
+                        meta.maker = Some(brand_name.to_string());
                     }
                 }
             }
+
+            if meta.released_at.is_none() {
+                meta.released_at = value["datePublished"]
+                    .as_str()
+                    .or_else(|| value["uploadDate"].as_str())
+                    .map(|s| s.replace('/', "-"));
+            }
         }
+    }
+
+    let og_title_sel = Selector::parse("meta[property='og:title'][content]").unwrap();
+    if meta.title.is_none() {
+        meta.title = document
+            .select(&og_title_sel)
+            .next()
+            .and_then(|el| el.value().attr("content"))
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty());
+    }
+
+    let og_image_sel = Selector::parse("meta[property='og:image'][content]").unwrap();
+    if meta.cover_url.is_none() {
+        meta.cover_url = document
+            .select(&og_image_sel)
+            .next()
+            .and_then(|el| el.value().attr("content"))
+            .and_then(|s| super::normalize_media_url_with_base(s, "https://adult.contents.fc2.com"));
     }
 
     // 2. Parse tags from data-tag attributes
@@ -45,7 +85,11 @@ pub(crate) fn parse_fc2_html(html: &str) -> Result<ScrapedMetadata, ScrapeError>
     let device_sel = Selector::parse(".items_article_softDevice > p").unwrap();
     for el in document.select(&device_sel) {
         let text = el.text().collect::<String>();
-        if let Some(date_part) = text.strip_prefix("Sale Day : ") {
+        if let Some(date_part) = text
+            .split([':', '：'])
+            .nth(1)
+            .filter(|_| text.contains("Sale Day") || text.contains("販売日"))
+        {
             let trimmed = date_part.trim();
             // Convert YYYY/MM/DD → YYYY-MM-DD
             meta.released_at = Some(trimmed.replace('/', "-"));
@@ -56,7 +100,20 @@ pub(crate) fn parse_fc2_html(html: &str) -> Result<ScrapedMetadata, ScrapeError>
     let sample_sel = Selector::parse(".items_article_SampleImagesArea img[src]").unwrap();
     for el in document.select(&sample_sel) {
         if let Some(src) = el.value().attr("src") {
-            meta.sample_image_urls.push(src.to_string());
+            if let Some(url) = super::normalize_media_url_with_base(src, "https://adult.contents.fc2.com") {
+                meta.sample_image_urls.push(url);
+            }
+        }
+    }
+
+    let gallery_sel = Selector::parse("a[data-fancybox='gallery'][href]").unwrap();
+    for el in document.select(&gallery_sel) {
+        if let Some(href) = el.value().attr("href") {
+            if let Some(url) = super::normalize_media_url_with_base(href, "https://adult.contents.fc2.com") {
+                if !meta.sample_image_urls.contains(&url) {
+                    meta.sample_image_urls.push(url);
+                }
+            }
         }
     }
 
@@ -87,7 +144,7 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
         return Err(ScrapeError::RateLimited);
     }
     if status != 200 {
-        tracing::error!("fc2: unexpected HTTP {} for code={}", status, code);
+        tracing::warn!("fc2: unexpected HTTP {} for code={}", status, code);
         return Err(ScrapeError::NetworkError(format!("HTTP {}", status)));
     }
 
@@ -108,7 +165,7 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
             Ok(meta)
         }
         Err(e) => {
-            tracing::error!("fc2: parse failed for code={}: {}", code, e);
+            tracing::warn!("fc2: parse failed for code={}: {}", code, e);
             Err(e)
         }
     }
