@@ -8,7 +8,7 @@ import InAppPlayer from './InAppPlayer'
 import { useTauriCommand } from '@/hooks/useTauriCommand'
 import { useLibraryStore } from '@/stores/libraryStore'
 import type { Video, SampleImage, Actor } from '@/types'
-import { assetUrl } from '@/lib/utils'
+import { assetUrl, cn } from '@/lib/utils'
 
 interface VideoDetailProps {
   video: Video
@@ -192,17 +192,28 @@ export default function VideoDetail({ video, onClose }: VideoDetailProps) {
               />
               즐겨찾기
             </Button>
-            {(video.scrapeStatus === 'not_scraped' || video.scrapeStatus === 'not_found') && (
-              <Button
+            {video.scrapeStatus !== 'not_scraped' && (
+              <Badge
                 variant="outline"
-                size="sm"
-                onClick={handleScrape}
-                disabled={isScraping}
+                className={cn(
+                  'text-xs',
+                  video.scrapeStatus === 'complete' && 'border-green-600 text-green-400',
+                  video.scrapeStatus === 'partial' && 'border-orange-600 text-orange-400',
+                  video.scrapeStatus === 'not_found' && 'border-red-600 text-red-400',
+                )}
               >
-                <Download className={`w-4 h-4 mr-1 ${isScraping ? 'animate-spin' : ''}`} />
-                {isScraping ? '수집 중...' : '메타데이터 수집'}
-              </Button>
+                {video.scrapeStatus === 'complete' ? '수집 완료' : video.scrapeStatus === 'partial' ? '부분 수집' : '실패'}
+              </Badge>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleScrape}
+              disabled={isScraping}
+            >
+              <Download className={`w-4 h-4 mr-1 ${isScraping ? 'animate-spin' : ''}`} />
+              {isScraping ? '수집 중...' : video.scrapeStatus === 'not_scraped' ? '메타데이터 수집' : '재수집'}
+            </Button>
           </div>
         </div>
       </div>
