@@ -5,15 +5,18 @@ import ScrapeProgressBar from '@/components/library/ScrapeProgressBar'
 import { useLogStore, type LogEntry } from '@/stores/logStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { useTauriCommand } from '@/hooks/useTauriCommand'
-import type { Video } from '@/types'
+import type { Video, Tag } from '@/types'
 
 export default function AppShell() {
   const { setVideos } = useLibraryStore()
   const { run } = useTauriCommand()
 
-  // 앱 시작 시 1회 스캔
+  // 앱 시작 시 1회 스캔 + 태그 로드
   useEffect(() => {
     run<Video[]>('scan_library', {}, []).then(setVideos)
+    run<Tag[]>('get_tags', {}, []).then((tags) => {
+      useLibraryStore.getState().setAllTags(tags)
+    })
   }, [run, setVideos])
 
   // 이벤트 리스너: log-event, library-changed
@@ -61,6 +64,9 @@ export default function AppShell() {
           useLibraryStore.getState().setScrapeMode('result')
           run<Video[]>('get_videos', {}, []).then((vids) => {
             useLibraryStore.getState().setVideos(vids)
+          })
+          run<Tag[]>('get_tags', {}, []).then((tags) => {
+            useLibraryStore.getState().setAllTags(tags)
           })
         })
         if (cancelled) { u1(); u2(); u3(); u4(); return }

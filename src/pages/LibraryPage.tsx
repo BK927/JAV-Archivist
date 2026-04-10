@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import FilterBar from '@/components/library/FilterBar'
 import VideoGrid from '@/components/library/VideoGrid'
@@ -7,17 +7,14 @@ import VideoDetail from '@/components/detail/VideoDetail'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
 import { useFilteredVideos } from '@/hooks/useFilteredVideos'
-import { useTauriCommand } from '@/hooks/useTauriCommand'
-import type { Video, Tag } from '@/types'
+import type { Video } from '@/types'
 
 export default function LibraryPage() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { videos, filters, searchQuery } = useLibraryStore()
+  const { videos, filters, searchQuery, allTags } = useLibraryStore()
   const { currentVideo, setCurrentVideo } = usePlayerStore()
-  const { run } = useTauriCommand()
   const [searchParams, setSearchParams] = useSearchParams()
-  const [allTags, setAllTags] = useState<Tag[]>([])
 
   // URL query param filter (memoized to avoid unnecessary useMemo recalculations)
   const activeFilter = useMemo(() => {
@@ -31,31 +28,6 @@ export default function LibraryPage() {
   const clearFilter = () => setSearchParams({})
 
   const filtered = useFilteredVideos(videos, filters, searchQuery, activeFilter)
-
-  // videos.length를 의존성으로 사용해 개별 비디오 업데이트 시 불필요한 재페칭 방지
-  const videoCount = videos.length
-  useEffect(() => {
-    run<Tag[]>('get_tags', {}, []).then(setAllTags)
-  }, [run, videoCount])
-
-  // Refresh tags after scraping completes (scraping updates tags but not video count)
-  useEffect(() => {
-    let unlisten: (() => void) | undefined
-    let cancelled = false
-    async function setup() {
-      try {
-        const { listen } = await import('@tauri-apps/api/event')
-        if (cancelled) return
-        const u = await listen('scrape-complete', () => {
-          run<Tag[]>('get_tags', {}, []).then(setAllTags)
-        })
-        if (cancelled) { u(); return }
-        unlisten = u
-      } catch { /* not in Tauri env */ }
-    }
-    setup()
-    return () => { cancelled = true; unlisten?.() }
-  }, [run])
 
   useEffect(() => {
     if (id) {
