@@ -278,15 +278,16 @@ async fn scrape_video(
 }
 
 #[tauri::command]
-async fn scrape_all_new(
+async fn scrape_videos(
     db: tauri::State<'_, DbPath>,
     thumbnails: tauri::State<'_, ThumbnailsDir>,
     actors_state: tauri::State<'_, ActorsDir>,
     samples_state: tauri::State<'_, SamplesDir>,
     cancel: tauri::State<'_, ScrapeCancel>,
     app: tauri::AppHandle,
+    video_ids: Vec<String>,
 ) -> Result<(), String> {
-    tracing::info!("cmd: scrape_all_new");
+    tracing::info!("cmd: scrape_videos count={}", video_ids.len());
     let db_path = db.0.clone();
     let thumbnails_dir = thumbnails.0.clone();
     let actors_dir = actors_state.0.clone();
@@ -295,20 +296,30 @@ async fn scrape_all_new(
 
     cancel_flag.store(false, Ordering::SeqCst);
 
+    // Fetch codes for the requested video IDs
+    let ids = video_ids.clone();
     let to_scrape = tokio::task::spawn_blocking(move || {
         let conn = db::open(db_path.to_str().unwrap()).map_err(|e| e.to_string())?;
-        db::get_videos_to_scrape(&conn).map_err(|e| e.to_string())
+        let mut result = Vec::new();
+        for id in &ids {
+            if let Ok(video) = db::get_video_by_id(&conn, id) {
+                if video.code != "?" {
+                    result.push((video.id, video.code));
+                }
+            }
+        }
+        Ok::<Vec<(String, String)>, String>(result)
     })
     .await
     .map_err(|e| e.to_string())??;
 
     let total = to_scrape.len();
-    tracing::info!("scrape_all_new: {} videos to scrape", total);
+    tracing::info!("scrape_videos: {} videos to scrape", total);
     let pipeline = scraper::ScrapePipeline::new(thumbnails_dir, actors_dir, samples_dir)?;
 
     for (i, (video_id, code)) in to_scrape.into_iter().enumerate() {
         if cancel_flag.load(Ordering::SeqCst) {
-            tracing::info!("scrape_all_new: cancelled at {}/{}", i + 1, total);
+            tracing::info!("scrape_videos: cancelled at {}/{}", i + 1, total);
             break;
         }
 
@@ -349,7 +360,6 @@ async fn scrape_all_new(
                 status,
             )?;
 
-            // Update actor photos AFTER upsert so actor rows exist
             for (actor_name, photo_path) in &actor_photo_map {
                 let _ = conn.execute(
                     "UPDATE actors SET photo_path = ?1 WHERE name = ?2 AND photo_path IS NULL",
@@ -373,7 +383,7 @@ async fn scrape_all_new(
         });
     }
 
-    tracing::info!("scrape_all_new: complete, processed {}", total);
+    tracing::info!("scrape_videos: complete, processed {}", total);
     let _ = app.emit("scrape-complete", total);
     Ok(())
 }
@@ -484,7 +494,7 @@ pub fn run() {
             get_settings,
             save_settings,
             scrape_video,
-            scrape_all_new,
+            scrape_videos,
             cancel_scrape,
             reset_scrape_status,
             reset_data,
