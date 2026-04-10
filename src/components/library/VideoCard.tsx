@@ -7,23 +7,45 @@ import { cn, assetUrl } from '@/lib/utils'
 interface VideoCardProps {
   video: Video
   onClick: (video: Video) => void
+  selectionMode: boolean
+  selected: boolean
+  onToggleSelect: (id: string) => void
 }
 
-export default function VideoCard({ video, onClick }: VideoCardProps) {
+export default function VideoCard({ video, onClick, selectionMode, selected, onToggleSelect }: VideoCardProps) {
   const [hovered, setHovered] = useState(false)
+
+  const handleClick = () => {
+    if (selectionMode) {
+      onToggleSelect(video.id)
+    } else {
+      onClick(video)
+    }
+  }
 
   return (
     <button
       className={cn(
         'group relative w-full text-left rounded-md bg-card border transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-        hovered ? 'border-primary/50 shadow-lg z-10' : 'border-border z-0'
+        selected ? 'border-primary shadow-lg z-10' : hovered ? 'border-primary/50 shadow-lg z-10' : 'border-border z-0'
       )}
-      onClick={() => onClick(video)}
+      onClick={handleClick}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       {/* 썸네일 영역 */}
       <div className="relative aspect-[800/538] bg-muted overflow-hidden rounded-t-md">
+        {selectionMode && (
+          <div className={cn(
+            'absolute top-1.5 left-1.5 z-[4] w-5 h-5 rounded border-2 flex items-center justify-center text-xs',
+            selected
+              ? 'bg-primary border-primary text-primary-foreground'
+              : 'border-muted-foreground/50 bg-black/30'
+          )}>
+            {selected && '✓'}
+          </div>
+        )}
+
         {video.thumbnailPath ? (
           <>
             {/* 블러 배경 레이어 — 비율 불일치 시 여백 채움 */}
@@ -49,7 +71,10 @@ export default function VideoCard({ video, onClick }: VideoCardProps) {
 
         {/* 품번 배지 - 좌상단 */}
         <Badge
-          className="absolute top-1.5 left-1.5 z-[2] bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 font-mono font-bold"
+          className={cn(
+            'absolute top-1.5 z-[2] bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 font-mono font-bold',
+            selectionMode ? 'left-8' : 'left-1.5'
+          )}
           variant="default"
         >
           {video.code}
@@ -63,14 +88,16 @@ export default function VideoCard({ video, onClick }: VideoCardProps) {
         )}
 
         {/* 호버 재생 오버레이 */}
-        <div
-          className={cn(
-            'absolute inset-0 z-[3] bg-black/60 flex items-center justify-center transition-opacity',
-            hovered ? 'opacity-100' : 'opacity-0'
-          )}
-        >
-          <Play className="w-10 h-10 text-white" />
-        </div>
+        {!selectionMode && (
+          <div
+            className={cn(
+              'absolute inset-0 z-[3] bg-black/60 flex items-center justify-center transition-opacity',
+              hovered ? 'opacity-100' : 'opacity-0'
+            )}
+          >
+            <Play className="w-10 h-10 text-white" />
+          </div>
+        )}
       </div>
 
       {/* 카드 하단 정보 — 호버 시 확장 */}
