@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Play, Star } from 'lucide-react'
 import type { Video } from '@/types'
@@ -10,18 +10,37 @@ interface VideoCardProps {
   selectionMode: boolean
   selected: boolean
   onToggleSelect: (id: string) => void
+  onLongPress: (id: string) => void
 }
 
-export default function VideoCard({ video, onClick, selectionMode, selected, onToggleSelect }: VideoCardProps) {
+export default function VideoCard({ video, onClick, selectionMode, selected, onToggleSelect, onLongPress }: VideoCardProps) {
   const [hovered, setHovered] = useState(false)
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const didLongPress = useRef(false)
 
   const handleClick = () => {
+    if (didLongPress.current) return
     if (selectionMode) {
       onToggleSelect(video.id)
     } else {
       onClick(video)
     }
   }
+
+  const handlePointerDown = useCallback(() => {
+    didLongPress.current = false
+    longPressTimer.current = setTimeout(() => {
+      didLongPress.current = true
+      onLongPress(video.id)
+    }, 500)
+  }, [video.id, onLongPress])
+
+  const handlePointerUp = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current)
+      longPressTimer.current = null
+    }
+  }, [])
 
   return (
     <button
@@ -30,6 +49,10 @@ export default function VideoCard({ video, onClick, selectionMode, selected, onT
         selected ? 'border-primary shadow-lg z-10' : hovered ? 'border-primary/50 shadow-lg z-10' : 'border-border z-0'
       )}
       onClick={handleClick}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      onContextMenu={(e) => e.preventDefault()}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >

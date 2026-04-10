@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Outlet } from 'react-router-dom'
 import TopNav from './TopNav'
+import ScrapeProgressBar from '@/components/library/ScrapeProgressBar'
 import { useLogStore, type LogEntry } from '@/stores/logStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { useTauriCommand } from '@/hooks/useTauriCommand'
@@ -35,7 +36,36 @@ export default function AppShell() {
         })
         if (cancelled) { u1(); u2(); return }
 
-        unlisten = [u1, u2]
+        const u3 = await listen<{ current: number; total: number; status: string; video?: Video }>(
+          'scrape-progress',
+          (e) => {
+            const store = useLibraryStore.getState()
+            if (store.scrapeMode !== 'progress') return
+            const isSuccess = e.payload.status === 'complete' || e.payload.status === 'partial'
+            store.updateScrapeProgress((prev) => ({
+              current: e.payload.current,
+              total: e.payload.total,
+              success: prev.success + (isSuccess ? 1 : 0),
+              fail: prev.fail + (isSuccess ? 0 : 1),
+            }))
+            if (e.payload.video) {
+              store.setVideos(
+                store.videos.map((v) => v.id === e.payload.video!.id ? e.payload.video! : v)
+              )
+            }
+          }
+        )
+        if (cancelled) { u1(); u2(); u3(); return }
+
+        const u4 = await listen('scrape-complete', () => {
+          useLibraryStore.getState().setScrapeMode('result')
+          run<Video[]>('get_videos', {}, []).then((vids) => {
+            useLibraryStore.getState().setVideos(vids)
+          })
+        })
+        if (cancelled) { u1(); u2(); u3(); u4(); return }
+
+        unlisten = [u1, u2, u3, u4]
       } catch {
         // Not in Tauri env
       }
@@ -50,6 +80,7 @@ export default function AppShell() {
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>
+      <ScrapeProgressBar />
     </div>
   )
 }

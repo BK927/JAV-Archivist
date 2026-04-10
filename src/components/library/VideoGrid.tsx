@@ -8,7 +8,7 @@ interface VideoGridProps {
 }
 
 export default function VideoGrid({ videos, onSelect }: VideoGridProps) {
-  const { selectionMode, selectedIds, toggleSelected } = useLibraryStore()
+  const { selectionMode, selectedIds, toggleSelected, setSelectionMode } = useLibraryStore()
 
   if (videos.length === 0) {
     return (
@@ -31,6 +31,12 @@ export default function VideoGrid({ videos, onSelect }: VideoGridProps) {
           selectionMode={selectionMode}
           selected={selectedIds.has(video.id)}
           onToggleSelect={toggleSelected}
+          onLongPress={(id) => {
+            if (!selectionMode) {
+              setSelectionMode(true)
+              toggleSelected(id)
+            }
+          }}
         />
       ))}
     </div>
