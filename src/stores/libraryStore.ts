@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Video, FilterState } from '@/types'
+import type { Video, FilterState, Tag } from '@/types'
 
 type ScrapeMode = 'idle' | 'progress' | 'result'
 
@@ -17,6 +17,7 @@ interface LibraryStore {
   isScanning: boolean
   selectionMode: boolean
   selectedIds: Set<string>
+  allTags: Tag[]
   scrapeMode: ScrapeMode
   scrapeProgress: ScrapeProgress
   setVideos: (videos: Video[]) => void
@@ -27,6 +28,7 @@ interface LibraryStore {
   toggleSelected: (id: string) => void
   selectAll: (ids: string[]) => void
   clearSelection: () => void
+  setAllTags: (tags: Tag[]) => void
   setScrapeMode: (mode: ScrapeMode) => void
   setScrapeProgress: (p: ScrapeProgress) => void
   updateScrapeProgress: (updater: (prev: ScrapeProgress) => ScrapeProgress) => void
@@ -48,6 +50,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   isScanning: false,
   selectionMode: false,
   selectedIds: new Set(),
+  allTags: [],
   scrapeMode: 'idle',
   scrapeProgress: { current: 0, total: 0, success: 0, fail: 0 },
   setVideos: (videos) => set({ videos }),
@@ -65,6 +68,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
   selectAll: (ids) => set({ selectedIds: new Set(ids) }),
   clearSelection: () => set({ selectedIds: new Set() }),
+  setAllTags: (allTags) => set({ allTags }),
   setScrapeMode: (scrapeMode) => set({ scrapeMode }),
   setScrapeProgress: (scrapeProgress) => set({ scrapeProgress }),
   updateScrapeProgress: (updater) => set({ scrapeProgress: updater(get().scrapeProgress) }),
