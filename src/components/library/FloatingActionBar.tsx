@@ -90,11 +90,14 @@ export default function FloatingActionBar({ filteredIds }: { filteredIds: string
 
   const handleReset = async () => {
     const ids = [...selectedIds]
-    await run('reset_scrape_status', { videoIds: ids }, undefined)
-    // Refresh videos after reset
-    const videos = await run<Video[]>('get_videos', {}, [])
-    useLibraryStore.getState().setVideos(videos)
-    clearSelection()
+    try {
+      await run('reset_scrape_status', { videoIds: ids }, undefined)
+      const videos = await run<Video[]>('get_videos', {}, [])
+      useLibraryStore.getState().setVideos(videos)
+      clearSelection()
+    } catch {
+      // keep selection on failure
+    }
   }
 
   const handleCancel = async () => {

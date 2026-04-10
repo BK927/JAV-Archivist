@@ -39,6 +39,25 @@ export default function LibraryPage() {
     run<Tag[]>('get_tags', {}, []).then(setAllTags)
   }, [run, videoCount])
 
+  // Refresh tags after scraping completes (scraping updates tags but not video count)
+  useEffect(() => {
+    let unlisten: (() => void) | undefined
+    let cancelled = false
+    async function setup() {
+      try {
+        const { listen } = await import('@tauri-apps/api/event')
+        if (cancelled) return
+        const u = await listen('scrape-complete', () => {
+          run<Tag[]>('get_tags', {}, []).then(setAllTags)
+        })
+        if (cancelled) { u(); return }
+        unlisten = u
+      } catch { /* not in Tauri env */ }
+    }
+    setup()
+    return () => { cancelled = true; unlisten?.() }
+  }, [run])
+
   useEffect(() => {
     if (id) {
       const found = videos.find((v) => v.id === id)

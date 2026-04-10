@@ -1,15 +1,15 @@
 import VideoCard from './VideoCard'
 import type { Video } from '@/types'
+import { useLibraryStore } from '@/stores/libraryStore'
 
 interface VideoGridProps {
   videos: Video[]
   onSelect: (video: Video) => void
-  selectionMode?: boolean
-  selectedIds?: Set<string>
-  onToggleSelect?: (id: string) => void
 }
 
-export default function VideoGrid({ videos, onSelect, selectionMode = false, selectedIds = new Set(), onToggleSelect = () => {} }: VideoGridProps) {
+export default function VideoGrid({ videos, onSelect }: VideoGridProps) {
+  const { selectionMode, selectedIds, toggleSelected } = useLibraryStore()
+
   if (videos.length === 0) {
     return (
       <div className="flex items-center justify-center h-64 text-muted-foreground text-sm">
@@ -24,7 +24,14 @@ export default function VideoGrid({ videos, onSelect, selectionMode = false, sel
       style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}
     >
       {videos.map((video) => (
-        <VideoCard key={video.id} video={video} onClick={onSelect} selectionMode={selectionMode} selected={selectedIds.has(video.id)} onToggleSelect={onToggleSelect} />
+        <VideoCard
+          key={video.id}
+          video={video}
+          onClick={onSelect}
+          selectionMode={selectionMode}
+          selected={selectedIds.has(video.id)}
+          onToggleSelect={toggleSelected}
+        />
       ))}
     </div>
   )
