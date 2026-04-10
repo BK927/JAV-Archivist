@@ -67,17 +67,15 @@ export default function FilterBar({
   const quickTagNames = new Set(quickTags.map((t) => t.name))
   const extraSelected = selectedTags.filter((t) => !quickTagNames.has(t))
 
-  // Toggle a tag in group 0 (quick tag click)
+  // Toggle a tag (quick tag click) — adds to first group, removes from any
   const toggleQuickTag = (tagName: string) => {
     const { tagFilter } = filters
     if (selectedTags.includes(tagName)) {
-      // Remove from whichever group it's in
       const groups = tagFilter.groups
         .map((g) => ({ ...g, tags: g.tags.filter((t) => t !== tagName) }))
         .filter((g) => g.tags.length > 0)
       setFilters({ tagFilter: { ...tagFilter, groups } })
     } else {
-      // Add to group 0
       const groups = [...tagFilter.groups]
       if (groups.length === 0) {
         groups.push({ id: crypto.randomUUID(), tags: [tagName] })

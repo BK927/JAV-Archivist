@@ -31,6 +31,15 @@ export default function TagPopover({ allTags, remainingCount }: TagPopoverProps)
     [tagFilter.groups]
   )
 
+  // Stable string key for selected tags (avoids array reference issues in useEffect)
+  const selectedTagsKey = selectedTags.join('\0')
+
+  // Tag lookup map for O(1) access
+  const tagMap = useMemo(
+    () => new Map(allTags.map((t) => [t.name, t])),
+    [allTags]
+  )
+
   // Search results: filter allTags by search text, sorted by videoCount
   const searchResults = useMemo(() => {
     if (!search.trim()) return allTags.slice(0, 20)
@@ -44,11 +53,10 @@ export default function TagPopover({ allTags, remainingCount }: TagPopoverProps)
       setCoTags([])
       return
     }
-    // Use the first selected tag for co-occurrence
-    const firstTag = allTags.find((t) => t.name === selectedTags[0])
+    const firstTag = tagMap.get(selectedTags[0])
     if (!firstTag) return
     run<TagCooccurrence[]>('get_tag_cooccurrence', { tagId: firstTag.id }, []).then(setCoTags)
-  }, [selectedTags, allTags, run])
+  }, [selectedTagsKey, tagMap, run]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset highlight when search changes
   useEffect(() => {
@@ -65,14 +73,15 @@ export default function TagPopover({ allTags, remainingCount }: TagPopoverProps)
   }, [open])
 
   const addTagToGroup = useCallback(
-    (tagName: string, groupIdx: number = 0) => {
+    (tagName: string, groupIdx?: number) => {
       if (selectedTags.includes(tagName)) return
       const groups = [...tagFilter.groups]
       if (groups.length === 0) {
         groups.push({ id: crypto.randomUUID(), tags: [tagName] })
       } else {
-        const group = { ...groups[groupIdx], tags: [...groups[groupIdx].tags, tagName] }
-        groups[groupIdx] = group
+        // 지정된 그룹 또는 마지막 그룹에 추가
+        const idx = groupIdx ?? groups.length - 1
+        groups[idx] = { ...groups[idx], tags: [...groups[idx].tags, tagName] }
       }
       setFilters({ tagFilter: { ...tagFilter, groups } })
     },
@@ -243,23 +252,20 @@ export default function TagPopover({ allTags, remainingCount }: TagPopoverProps)
                         </span>
                       </div>
                       <div className="flex flex-wrap gap-1.5">
-                        {group.tags.map((tagName) => {
-                          const tagData = allTags.find((t) => t.name === tagName)
-                          return (
-                            <Badge
-                              key={tagName}
-                              variant="default"
-                              className="h-6 px-2 text-[11px] gap-1 cursor-pointer"
-                              onClick={() => removeTagFromGroup(tagName, gi)}
-                            >
-                              {tagName}
-                              <span className="text-[9px] opacity-50">
-                                {tagData?.videoCount ?? 0}
-                              </span>
-                              <X className="w-2.5 h-2.5 opacity-60" />
-                            </Badge>
-                          )
-                        })}
+                        {group.tags.map((tagName) => (
+                          <Badge
+                            key={tagName}
+                            variant="default"
+                            className="h-6 px-2 text-[11px] gap-1 cursor-pointer"
+                            onClick={() => removeTagFromGroup(tagName, gi)}
+                          >
+                            {tagName}
+                            <span className="text-[9px] opacity-50">
+                              {tagMap.get(tagName)?.videoCount ?? 0}
+                            </span>
+                            <X className="w-2.5 h-2.5 opacity-60" />
+                          </Badge>
+                        ))}
                       </div>
                     </div>
                   </div>

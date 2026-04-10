@@ -38,9 +38,11 @@ export default function LibraryPage() {
     run<Video[]>('scan_library', {}, []).then(setVideos)
   }, [run, setVideos])
 
+  // videos.length를 의존성으로 사용해 개별 비디오 업데이트 시 불필요한 재페칭 방지
+  const videoCount = videos.length
   useEffect(() => {
     run<Tag[]>('get_tags', {}, []).then(setAllTags)
-  }, [run, videos])
+  }, [run, videoCount])
 
   // Listen for scrape events
   useEffect(() => {
@@ -66,6 +68,7 @@ export default function LibraryPage() {
           setIsScraping(false)
           setScrapeProgress(null)
           run<Video[]>('get_videos', {}, []).then(setVideos)
+          run<Tag[]>('get_tags', {}, []).then(setAllTags)
         })
         if (cancelled) { u1(); u2(); return }
 
