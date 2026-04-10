@@ -34,10 +34,6 @@ export default function LibraryPage() {
   const filtered = useFilteredVideos(videos, filters, searchQuery, activeFilter)
   const unscrapedCount = videos.filter((v) => v.scrapeStatus === 'not_scraped' && v.code !== '?').length
 
-  useEffect(() => {
-    run<Video[]>('scan_library', {}, []).then(setVideos)
-  }, [run, setVideos])
-
   // videos.length를 의존성으로 사용해 개별 비디오 업데이트 시 불필요한 재페칭 방지
   const videoCount = videos.length
   useEffect(() => {
