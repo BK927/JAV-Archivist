@@ -57,7 +57,7 @@ export default function FilterBar({
   const sortKey = `${filters.sortBy}-${filters.sortOrder}`
 
   // All selected tags across all groups
-  const selectedTags = filters.tagFilter.groups.flatMap((g) => g.tags)
+  const selectedTagSet = new Set(filters.tagFilter.groups.flatMap((g) => g.tags))
 
   // Quick tags: top N by videoCount (tags already sorted by videoCount DESC from backend)
   const quickTags = tags.slice(0, QUICK_TAG_COUNT)
@@ -65,12 +65,12 @@ export default function FilterBar({
 
   // Selected tags not in quick tags (show them in FilterBar too)
   const quickTagNames = new Set(quickTags.map((t) => t.name))
-  const extraSelected = selectedTags.filter((t) => !quickTagNames.has(t))
+  const extraSelected = [...selectedTagSet].filter((t) => !quickTagNames.has(t))
 
   // Toggle a tag (quick tag click) — adds to first group, removes from any
   const toggleQuickTag = (tagName: string) => {
     const { tagFilter } = filters
-    if (selectedTags.includes(tagName)) {
+    if (selectedTagSet.has(tagName)) {
       const groups = tagFilter.groups
         .map((g) => ({ ...g, tags: g.tags.filter((t) => t !== tagName) }))
         .filter((g) => g.tags.length > 0)
@@ -145,7 +145,7 @@ export default function FilterBar({
       {quickTags.map((tag) => (
         <Badge
           key={tag.id}
-          variant={selectedTags.includes(tag.name) ? 'default' : 'outline'}
+          variant={selectedTagSet.has(tag.name) ? 'default' : 'outline'}
           className="cursor-pointer h-7 px-2 text-xs shrink-0"
           onClick={() => toggleQuickTag(tag.name)}
         >

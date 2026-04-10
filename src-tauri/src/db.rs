@@ -65,6 +65,8 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             PRIMARY KEY (video_id, tag_id)
         );
 
+        CREATE INDEX IF NOT EXISTS idx_video_tags_tag_id ON video_tags(tag_id, video_id);
+
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL

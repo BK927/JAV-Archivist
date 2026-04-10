@@ -26,13 +26,13 @@ export default function TagPopover({ allTags, remainingCount }: TagPopoverProps)
   const inputRef = useRef<HTMLInputElement>(null)
 
   // All currently selected tag names (across all groups)
-  const selectedTags = useMemo(
-    () => tagFilter.groups.flatMap((g) => g.tags),
+  const selectedTagSet = useMemo(
+    () => new Set(tagFilter.groups.flatMap((g) => g.tags)),
     [tagFilter.groups]
   )
 
-  // Stable string key for selected tags (avoids array reference issues in useEffect)
-  const selectedTagsKey = selectedTags.join('\0')
+  // First selected tag name (stable key for co-occurrence fetch)
+  const firstSelectedTag = tagFilter.groups[0]?.tags[0] ?? ''
 
   // Tag lookup map for O(1) access
   const tagMap = useMemo(
@@ -47,16 +47,16 @@ export default function TagPopover({ allTags, remainingCount }: TagPopoverProps)
     return allTags.filter((t) => t.name.toLowerCase().includes(q))
   }, [search, allTags])
 
-  // Fetch co-occurrence when selected tags change
+  // Fetch co-occurrence only when the first selected tag changes
   useEffect(() => {
-    if (selectedTags.length === 0) {
+    if (!firstSelectedTag) {
       setCoTags([])
       return
     }
-    const firstTag = tagMap.get(selectedTags[0])
-    if (!firstTag) return
-    run<TagCooccurrence[]>('get_tag_cooccurrence', { tagId: firstTag.id }, []).then(setCoTags)
-  }, [selectedTagsKey, tagMap, run]) // eslint-disable-line react-hooks/exhaustive-deps
+    const tag = tagMap.get(firstSelectedTag)
+    if (!tag) return
+    run<TagCooccurrence[]>('get_tag_cooccurrence', { tagId: tag.id }, []).then(setCoTags)
+  }, [firstSelectedTag, tagMap, run])
 
   // Reset highlight when search changes
   useEffect(() => {
@@ -74,7 +74,7 @@ export default function TagPopover({ allTags, remainingCount }: TagPopoverProps)
 
   const addTagToGroup = useCallback(
     (tagName: string, groupIdx?: number) => {
-      if (selectedTags.includes(tagName)) return
+      if (selectedTagSet.has(tagName)) return
       const groups = [...tagFilter.groups]
       if (groups.length === 0) {
         groups.push({ id: crypto.randomUUID(), tags: [tagName] })
@@ -85,7 +85,7 @@ export default function TagPopover({ allTags, remainingCount }: TagPopoverProps)
       }
       setFilters({ tagFilter: { ...tagFilter, groups } })
     },
-    [tagFilter, selectedTags, setFilters]
+    [tagFilter, selectedTagSet, setFilters]
   )
 
   const removeTagFromGroup = useCallback(
@@ -101,6 +101,9 @@ export default function TagPopover({ allTags, remainingCount }: TagPopoverProps)
   )
 
   const addGroup = useCallback(() => {
+    // 마지막 그룹이 비어있으면 중복 생성 방지
+    const last = tagFilter.groups[tagFilter.groups.length - 1]
+    if (last && last.tags.length === 0) return
     const groups = [...tagFilter.groups, { id: crypto.randomUUID(), tags: [] }]
     setFilters({ tagFilter: { ...tagFilter, groups } })
   }, [tagFilter, setFilters])
@@ -124,6 +127,8 @@ export default function TagPopover({ allTags, remainingCount }: TagPopoverProps)
         addTagToGroup(tag.name)
         setSearch('')
       }
+    } else if (e.key === 'Escape') {
+      setOpen(false)
     }
   }
 
@@ -189,7 +194,7 @@ export default function TagPopover({ allTags, remainingCount }: TagPopoverProps)
                 >
                   <span>{highlightMatch(tag.name)}</span>
                   <span className="flex items-center gap-2">
-                    {selectedTags.includes(tag.name) && (
+                    {selectedTagSet.has(tag.name) && (
                       <span className="text-[10px] text-primary bg-primary/15 px-1.5 py-0.5 rounded">선택됨</span>
                     )}
                     <span className="text-[10px] text-muted-foreground">{tag.videoCount}건</span>
@@ -215,7 +220,7 @@ export default function TagPopover({ allTags, remainingCount }: TagPopoverProps)
                     >
                       <span>{ct.tagName}</span>
                       <span className="flex items-center gap-2">
-                        {selectedTags.includes(ct.tagName) && (
+                        {selectedTagSet.has(ct.tagName) && (
                           <span className="text-[10px] text-primary bg-primary/15 px-1.5 py-0.5 rounded">선택됨</span>
                         )}
                         <span className="text-[10px] text-muted-foreground">{ct.coCount}건</span>
