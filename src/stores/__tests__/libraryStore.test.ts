@@ -8,7 +8,7 @@ const DEFAULT_FILTERS: FilterState = {
   sortOrder: 'desc',
   watchedFilter: 'all',
   favoriteOnly: false,
-  tags: [],
+  tagFilter: { groups: [], groupOperator: 'AND' },
 }
 
 beforeEach(() => {

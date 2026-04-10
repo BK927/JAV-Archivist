@@ -9,7 +9,7 @@ const BASE_FILTERS: FilterState = {
   sortOrder: 'desc',
   watchedFilter: 'all',
   favoriteOnly: false,
-  tags: [],
+  tagFilter: { groups: [], groupOperator: 'AND' },
 }
 
 describe('useFilteredVideos', () => {
@@ -29,7 +29,7 @@ describe('useFilteredVideos', () => {
 
   it('tags 필터는 해당 태그를 포함하는 영상만 반환한다', () => {
     const { result } = renderHook(() =>
-      useFilteredVideos(MOCK_VIDEOS, { ...BASE_FILTERS, tags: ['직장물'] }, '', null)
+      useFilteredVideos(MOCK_VIDEOS, { ...BASE_FILTERS, tagFilter: { groups: [{ id: 'test-1', tags: ['직장물'] }], groupOperator: 'AND' } }, '', null)
     )
     expect(result.current.every((v) => v.tags.includes('직장물'))).toBe(true)
   })
