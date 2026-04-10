@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local Codex / Claude workspace files
+.claude/
+.superpowers/
+output/
