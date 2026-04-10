@@ -103,6 +103,14 @@ pub struct Tag {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TagCooccurrence {
+    pub tag_id: String,
+    pub tag_name: String,
+    pub co_count: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SampleImage {
     pub id: String,
     pub video_id: String,

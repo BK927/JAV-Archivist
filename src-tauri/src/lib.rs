@@ -5,7 +5,7 @@ mod player;
 mod scanner;
 mod scraper;
 
-use models::{Settings, ScrapeStatus, Video, Actor, Maker, Series as SeriesModel, Tag, SampleImage};
+use models::{Settings, ScrapeStatus, Video, Actor, Maker, Series as SeriesModel, Tag, TagCooccurrence, SampleImage};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -108,6 +108,13 @@ fn get_tags(db: tauri::State<'_, DbPath>) -> Result<Vec<Tag>, String> {
     tracing::info!("cmd: get_tags");
     let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
     db::get_tags(&conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_tag_cooccurrence(db: tauri::State<'_, DbPath>, tag_id: String) -> Result<Vec<TagCooccurrence>, String> {
+    tracing::info!("cmd: get_tag_cooccurrence tag_id={}", tag_id);
+    let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
+    db::get_tag_cooccurrence(&conn, &tag_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -394,6 +401,7 @@ pub fn run() {
             get_actors,
             get_series_list,
             get_tags,
+            get_tag_cooccurrence,
             get_makers,
             get_sample_images,
         ])

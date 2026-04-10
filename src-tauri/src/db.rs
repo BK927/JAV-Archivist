@@ -436,6 +436,27 @@ pub fn get_tags(conn: &Connection) -> Result<Vec<Tag>> {
     rows.collect()
 }
 
+pub fn get_tag_cooccurrence(conn: &Connection, tag_id: &str) -> Result<Vec<crate::models::TagCooccurrence>> {
+    let mut stmt = conn.prepare(
+        "SELECT t2.id, t2.name, COUNT(*) as co_count
+         FROM video_tags vt1
+         JOIN video_tags vt2 ON vt1.video_id = vt2.video_id AND vt1.tag_id != vt2.tag_id
+         JOIN tags t2 ON vt2.tag_id = t2.id
+         WHERE vt1.tag_id = ?1
+         GROUP BY t2.id
+         ORDER BY co_count DESC
+         LIMIT 10"
+    )?;
+    let rows = stmt.query_map([tag_id], |row| {
+        Ok(crate::models::TagCooccurrence {
+            tag_id: row.get(0)?,
+            tag_name: row.get(1)?,
+            co_count: row.get::<_, u32>(2)?,
+        })
+    })?;
+    rows.collect()
+}
+
 pub fn get_sample_images(conn: &Connection, video_id: &str) -> Result<Vec<SampleImage>> {
     let mut stmt = conn.prepare(
         "SELECT id, video_id, path, sort_order FROM sample_images WHERE video_id = ?1 ORDER BY sort_order ASC"
