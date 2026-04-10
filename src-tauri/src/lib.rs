@@ -10,7 +10,8 @@ use models::{Settings, ScrapeStatus, Video, Actor, Maker, Series as SeriesModel,
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use notify::RecommendedWatcher;
 use tauri::Emitter;
 use tauri::Manager;
 
@@ -20,6 +21,7 @@ struct ThumbnailsDir(PathBuf);
 struct ActorsDir(PathBuf);
 struct SamplesDir(PathBuf);
 struct ScrapeCancel(Arc<AtomicBool>);
+struct WatcherHandle(Mutex<Option<RecommendedWatcher>>);
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -135,11 +137,21 @@ fn save_settings(
     app: tauri::AppHandle,
     db: tauri::State<'_, DbPath>,
     data_dir: tauri::State<'_, DataDir>,
+    watcher_handle: tauri::State<'_, WatcherHandle>,
     settings: Settings,
 ) -> Result<(), String> {
     tracing::info!("cmd: save_settings");
     let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
     db::save_settings(&conn, &settings).map_err(|e| e.to_string())?;
+
+    // 워처 재시작 (폴더 목록이 변경되었을 수 있음)
+    let new_watcher = watcher::start(
+        app.clone(),
+        &settings.scan_folders,
+        db.0.clone(),
+    ).ok();
+    *watcher_handle.0.lock().unwrap() = new_watcher;
+
     sync_asset_protocol_scope(&app, &settings, &data_dir.0)
 }
 
@@ -425,7 +437,7 @@ pub fn run() {
                 .map_err(|e| e.to_string())?;
 
             _app.manage(DataDir(data_dir.clone()));
-            _app.manage(DbPath(db_path));
+            _app.manage(DbPath(db_path.clone()));
 
             let thumbnails_dir = data_dir.join("thumbnails");
             std::fs::create_dir_all(&thumbnails_dir)?;
@@ -440,6 +452,14 @@ pub fn run() {
             _app.manage(SamplesDir(samples_dir));
 
             _app.manage(ScrapeCancel(Arc::new(AtomicBool::new(false))));
+
+            // 파일 시스템 워처 시작
+            let watcher = watcher::start(
+                _app.handle().clone(),
+                &settings.scan_folders,
+                db_path.clone(),
+            ).ok();
+            _app.manage(WatcherHandle(Mutex::new(watcher)));
 
             Ok(())
         })
