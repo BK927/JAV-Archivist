@@ -1,5 +1,5 @@
+use super::types::{ScrapeError, ScrapedMetadata};
 use scraper::{Html, Selector};
-use super::types::{ScrapedMetadata, ScrapeError};
 
 /// Parse ISO 8601 duration like "PT1H2M3S" to seconds
 fn parse_iso_duration(s: &str) -> Option<u64> {
@@ -20,7 +20,11 @@ fn parse_iso_duration(s: &str) -> Option<u64> {
             }
         }
     }
-    if total > 0 { Some(total) } else { None }
+    if total > 0 {
+        Some(total)
+    } else {
+        None
+    }
 }
 
 /// Decode a percent-encoded URL path segment (e.g. %E3%83%86 → UTF-8 "テ")
@@ -30,10 +34,9 @@ fn percent_decode(s: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(byte) = u8::from_str_radix(
-                std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""),
-                16,
-            ) {
+            if let Ok(byte) =
+                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+            {
                 result.push(byte);
                 i += 3;
                 continue;
@@ -82,9 +85,7 @@ pub(crate) fn parse_javten_page(html: &str) -> Result<ScrapedMetadata, ScrapeErr
             let mut meta = ScrapedMetadata::default();
 
             meta.title = v["name"].as_str().map(|s| s.trim().to_string());
-            meta.cover_url = v["image"]
-                .as_str()
-                .and_then(super::normalize_media_url);
+            meta.cover_url = v["image"].as_str().and_then(super::normalize_media_url);
 
             if let Some(genres) = v["genre"].as_array() {
                 meta.tags = genres
@@ -121,47 +122,128 @@ pub(crate) fn parse_javten_page(html: &str) -> Result<ScrapedMetadata, ScrapeErr
         }
     }
 
-    Err(ScrapeError::ParseError("no Movie JSON-LD found".to_string()))
+    Err(ScrapeError::ParseError(
+        "no Movie JSON-LD found".to_string(),
+    ))
+}
+
+fn normalize_detail_url(url: &str) -> Option<String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let absolute = if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        trimmed.to_string()
+    } else {
+        format!("https://javten.com/{}", trimmed.trim_start_matches('/'))
+    };
+
+    Some(
+        absolute
+            .replace("http://", "https://")
+            .replace("https://javten.com/ko/", "https://javten.com/")
+            .replace("https://javten.com/en/", "https://javten.com/")
+            .replace("https://javten.com/tw/", "https://javten.com/"),
+    )
+}
+
+fn extract_detail_url_from_search(
+    location: Option<&str>,
+    body: &str,
+    fc2_num: &str,
+) -> Option<String> {
+    if let Some(url) = location.and_then(normalize_detail_url) {
+        return Some(url);
+    }
+
+    let detail_marker = format!("id{}", fc2_num);
+    let doc = Html::parse_document(body);
+    let link_sel = Selector::parse("a[href]").ok()?;
+
+    for el in doc.select(&link_sel) {
+        let href = el.value().attr("href")?;
+        if href.contains(&detail_marker) {
+            if let Some(url) = normalize_detail_url(href) {
+                return Some(url);
+            }
+        }
+    }
+
+    None
 }
 
 pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadata, ScrapeError> {
-    let fc2_num = code.strip_prefix("FC2-PPV-").ok_or_else(|| {
-        ScrapeError::ParseError(format!("not an FC2 code: {}", code))
-    })?;
+    let fc2_num = code
+        .strip_prefix("FC2-PPV-")
+        .ok_or_else(|| ScrapeError::ParseError(format!("not an FC2 code: {}", code)))?;
 
     tracing::debug!("javten: searching for code={}", code);
 
-    // Step 1: Search → get 302 redirect Location
     let search_url = format!("https://javten.com/search?kw={}", fc2_num);
-    let search_resp = client
-        .get(&search_url)
-        .send()
-        .await
-        .map_err(|e| ScrapeError::NetworkError(e.to_string()))?;
+    let mut last_err = ScrapeError::NotFound;
+    let mut detail_url = None;
 
-    let location = search_resp
-        .headers()
-        .get("location")
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string())
-        .ok_or_else(|| {
-            tracing::warn!("javten: no redirect for code={}", code);
-            ScrapeError::NotFound
-        })?;
+    for attempt in 0..=2 {
+        if attempt > 0 {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
 
-    let _ = search_resp.bytes().await;
+        let search_resp = match client.get(&search_url).send().await {
+            Ok(resp) => resp,
+            Err(e) => {
+                tracing::warn!("javten: search network error attempt={}: {}", attempt, e);
+                last_err = ScrapeError::NetworkError(e.to_string());
+                continue;
+            }
+        };
 
-    // Step 2: Build HTTPS detail URL, strip language prefix
-    // Location: http://javten.com/ko/video/{id}/id{fc2}/{slug}
-    // Target:   https://javten.com/video/{id}/id{fc2}/{slug}
-    let detail_url = location
-        .replace("http://", "https://")
-        .replace("https://javten.com/ko/", "https://javten.com/")
-        .replace("https://javten.com/en/", "https://javten.com/");
+        let status = search_resp.status().as_u16();
+        if status == 404 {
+            return Err(ScrapeError::NotFound);
+        }
+        if status == 429 {
+            return Err(ScrapeError::RateLimited);
+        }
+        if status != 200 && !(300..400).contains(&status) {
+            tracing::warn!(
+                "javten: search HTTP {} attempt={} for code={}",
+                status,
+                attempt,
+                code
+            );
+            last_err = ScrapeError::NetworkError(format!("HTTP {}", status));
+            continue;
+        }
+
+        let location = search_resp
+            .headers()
+            .get("location")
+            .and_then(|v| v.to_str().ok());
+        let location = location.map(str::to_string);
+        let body = search_resp
+            .text()
+            .await
+            .map_err(|e| ScrapeError::NetworkError(e.to_string()))?;
+
+        if let Some(url) = extract_detail_url_from_search(location.as_deref(), &body, fc2_num) {
+            detail_url = Some(url);
+            break;
+        }
+
+        tracing::warn!(
+            "javten: no detail url attempt={} for code={}",
+            attempt,
+            code
+        );
+        last_err = ScrapeError::NotFound;
+    }
+
+    let detail_url = detail_url.ok_or(last_err)?;
 
     tracing::debug!("javten: fetching detail url={}", detail_url);
 
-    // Step 3: Fetch detail page with up to 2 retries (server is occasionally unstable)
+    // Step 2: Fetch detail page with up to 2 retries (server is occasionally unstable)
     let mut last_err = ScrapeError::NotFound;
     for attempt in 0..=2 {
         if attempt > 0 {
@@ -185,7 +267,12 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
             return Err(ScrapeError::RateLimited);
         }
         if status != 200 {
-            tracing::warn!("javten: HTTP {} attempt={} for code={}", status, attempt, code);
+            tracing::warn!(
+                "javten: HTTP {} attempt={} for code={}",
+                status,
+                attempt,
+                code
+            );
             last_err = ScrapeError::NetworkError(format!("HTTP {}", status));
             continue;
         }
@@ -202,14 +289,14 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
                     code,
                     meta.title
                 );
-            Ok(meta)
-        }
-        Err(e) => {
-            tracing::warn!("javten: parse failed for code={}: {}", code, e);
-            Err(e)
-        }
-    };
-}
+                Ok(meta)
+            }
+            Err(e) => {
+                tracing::warn!("javten: parse failed for code={}: {}", code, e);
+                Err(e)
+            }
+        };
+    }
 
     Err(last_err)
 }
@@ -305,5 +392,38 @@ mod tests {
     fn test_parse_javten_page_wrong_type() {
         let html = r#"<html><head><script type="application/ld+json">{"@type":"WebSite"}</script></head></html>"#;
         assert!(parse_javten_page(html).is_err());
+    }
+
+    #[test]
+    fn test_extract_detail_url_prefers_redirect_location() {
+        let url = extract_detail_url_from_search(
+            Some("http://javten.com/ko/video/432331/id1338512/test-slug"),
+            "",
+            "1338512",
+        );
+
+        assert_eq!(
+            url.as_deref(),
+            Some("https://javten.com/video/432331/id1338512/test-slug")
+        );
+    }
+
+    #[test]
+    fn test_extract_detail_url_from_search_results_page() {
+        let html = r#"<!DOCTYPE html>
+<html>
+<body>
+  <div class="card">
+    <a href="/ko/video/432331/id1338512/test-slug">Open</a>
+  </div>
+</body>
+</html>"#;
+
+        let url = extract_detail_url_from_search(None, html, "1338512");
+
+        assert_eq!(
+            url.as_deref(),
+            Some("https://javten.com/video/432331/id1338512/test-slug")
+        );
     }
 }

@@ -27,6 +27,23 @@ impl ScrapeStatus {
             _ => Self::NotScraped,
         }
     }
+
+    fn rank(&self) -> u8 {
+        match self {
+            Self::NotScraped => 0,
+            Self::NotFound => 1,
+            Self::Partial => 2,
+            Self::Complete => 3,
+        }
+    }
+
+    pub fn merge_with_existing(&self, existing: &Self) -> Self {
+        if self.rank() >= existing.rank() {
+            self.clone()
+        } else {
+            existing.clone()
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

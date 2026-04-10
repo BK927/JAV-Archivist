@@ -1,6 +1,9 @@
+use crate::models::{
+    Actor, ActorDetail, Maker, SampleImage, ScrapeStatus, Series as SeriesModel, Settings, Tag,
+    Video, VideoFile,
+};
 use rusqlite::{params, Connection, Result};
 use uuid::Uuid;
-use crate::models::{Settings, Video, VideoFile, ScrapeStatus, Actor, ActorDetail, Maker, Series as SeriesModel, Tag, SampleImage};
 
 pub fn open(path: &str) -> Result<Connection> {
     Connection::open(path)
@@ -88,13 +91,13 @@ pub fn init_db(conn: &Connection) -> Result<()> {
             video_id TEXT NOT NULL REFERENCES videos(id),
             path TEXT NOT NULL,
             sort_order INTEGER NOT NULL DEFAULT 0
-        );"
+        );",
     )?;
 
     // Migration for existing databases: add scrape columns
     let _ = conn.execute_batch(
         "ALTER TABLE videos ADD COLUMN scrape_status TEXT DEFAULT 'not_scraped';
-         ALTER TABLE videos ADD COLUMN scraped_at TEXT;"
+         ALTER TABLE videos ADD COLUMN scraped_at TEXT;",
     );
 
     // Migration: add new columns
@@ -127,7 +130,7 @@ pub fn migrate_series_to_table(conn: &Connection) -> Result<()> {
 
     conn.execute_batch(
         "UPDATE videos SET series_id = (SELECT id FROM series WHERE name = videos.series)
-         WHERE series IS NOT NULL AND series != '' AND series_id IS NULL"
+         WHERE series IS NOT NULL AND series != '' AND series_id IS NULL",
     )?;
 
     Ok(())
@@ -144,7 +147,7 @@ pub fn reset_data(conn: &Connection) -> Result<()> {
          DELETE FROM actors;
          DELETE FROM tags;
          DELETE FROM makers;
-         DELETE FROM series;"
+         DELETE FROM series;",
     )?;
     Ok(())
 }
@@ -208,7 +211,11 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<()> {
 
     conn.execute(
         "INSERT OR REPLACE INTO settings (key, value) VALUES ('log_enabled', ?1)",
-        [if settings.log_enabled { "true" } else { "false" }],
+        [if settings.log_enabled {
+            "true"
+        } else {
+            "false"
+        }],
     )?;
 
     conn.execute(
@@ -290,9 +297,15 @@ fn upsert_videos_inner(conn: &Connection, videos: &[Video]) -> Result<()> {
 
     // Clean up orphaned videos (no files — caused by previous code='?' duplication bug)
     conn.execute("DELETE FROM sample_images WHERE video_id NOT IN (SELECT DISTINCT video_id FROM video_files)", [])?;
-    conn.execute("DELETE FROM video_tags WHERE video_id NOT IN (SELECT DISTINCT video_id FROM video_files)", [])?;
+    conn.execute(
+        "DELETE FROM video_tags WHERE video_id NOT IN (SELECT DISTINCT video_id FROM video_files)",
+        [],
+    )?;
     conn.execute("DELETE FROM video_actors WHERE video_id NOT IN (SELECT DISTINCT video_id FROM video_files)", [])?;
-    conn.execute("DELETE FROM videos WHERE id NOT IN (SELECT DISTINCT video_id FROM video_files)", [])?;
+    conn.execute(
+        "DELETE FROM videos WHERE id NOT IN (SELECT DISTINCT video_id FROM video_files)",
+        [],
+    )?;
 
     Ok(())
 }
@@ -324,14 +337,39 @@ pub fn get_all_videos(conn: &Connection) -> Result<Vec<Video>> {
 
     let mut videos = Vec::new();
     for row in video_rows {
-        let (id, code, title, thumbnail_path, series, duration, watched, favorite, added_at, released_at, scrape_status_str, scraped_at, maker_name) = row?;
+        let (
+            id,
+            code,
+            title,
+            thumbnail_path,
+            series,
+            duration,
+            watched,
+            favorite,
+            added_at,
+            released_at,
+            scrape_status_str,
+            scraped_at,
+            maker_name,
+        ) = row?;
         let files = get_video_files(conn, &id)?;
         let actors = get_video_actors(conn, &id)?;
         let tags = get_video_tags(conn, &id)?;
 
         videos.push(Video {
-            id, code, title, files, thumbnail_path, actors, series, tags, duration,
-            watched: watched != 0, favorite: favorite != 0, added_at, released_at,
+            id,
+            code,
+            title,
+            files,
+            thumbnail_path,
+            actors,
+            series,
+            tags,
+            duration,
+            watched: watched != 0,
+            favorite: favorite != 0,
+            added_at,
+            released_at,
             scrape_status: ScrapeStatus::from_str(&scrape_status_str),
             scraped_at,
             maker_name,
@@ -370,8 +408,19 @@ pub fn get_video_by_id(conn: &Connection, id: &str) -> Result<Video> {
     let tags = get_video_tags(conn, id)?;
 
     Ok(Video {
-        id: id.to_string(), code, title, files, thumbnail_path, actors, series, tags, duration,
-        watched: watched != 0, favorite: favorite != 0, added_at, released_at,
+        id: id.to_string(),
+        code,
+        title,
+        files,
+        thumbnail_path,
+        actors,
+        series,
+        tags,
+        duration,
+        watched: watched != 0,
+        favorite: favorite != 0,
+        added_at,
+        released_at,
         scrape_status: ScrapeStatus::from_str(&scrape_status_str),
         scraped_at,
         maker_name,
@@ -384,7 +433,7 @@ pub fn get_actors(conn: &Connection) -> Result<Vec<Actor>> {
          FROM actors a
          LEFT JOIN video_actors va ON a.id = va.actor_id
          GROUP BY a.id
-         ORDER BY video_count DESC"
+         ORDER BY video_count DESC",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(Actor {
@@ -404,7 +453,7 @@ pub fn get_makers(conn: &Connection) -> Result<Vec<Maker>> {
          FROM makers m
          LEFT JOIN videos v ON v.maker_id = m.id
          GROUP BY m.id
-         ORDER BY video_count DESC"
+         ORDER BY video_count DESC",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(Maker {
@@ -422,7 +471,7 @@ pub fn get_series(conn: &Connection) -> Result<Vec<SeriesModel>> {
          FROM series s
          LEFT JOIN videos v ON v.series_id = s.id
          GROUP BY s.id
-         ORDER BY video_count DESC"
+         ORDER BY video_count DESC",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(SeriesModel {
@@ -441,7 +490,7 @@ pub fn get_tags(conn: &Connection) -> Result<Vec<Tag>> {
          FROM tags t
          LEFT JOIN video_tags vt ON t.id = vt.tag_id
          GROUP BY t.id
-         ORDER BY video_count DESC"
+         ORDER BY video_count DESC",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(Tag {
@@ -453,7 +502,10 @@ pub fn get_tags(conn: &Connection) -> Result<Vec<Tag>> {
     rows.collect()
 }
 
-pub fn get_tag_cooccurrence(conn: &Connection, tag_id: &str) -> Result<Vec<crate::models::TagCooccurrence>> {
+pub fn get_tag_cooccurrence(
+    conn: &Connection,
+    tag_id: &str,
+) -> Result<Vec<crate::models::TagCooccurrence>> {
     let mut stmt = conn.prepare(
         "SELECT t2.id, t2.name, COUNT(*) as co_count
          FROM video_tags vt1
@@ -462,7 +514,7 @@ pub fn get_tag_cooccurrence(conn: &Connection, tag_id: &str) -> Result<Vec<crate
          WHERE vt1.tag_id = ?1
          GROUP BY t2.id
          ORDER BY co_count DESC
-         LIMIT 10"
+         LIMIT 10",
     )?;
     let rows = stmt.query_map([tag_id], |row| {
         Ok(crate::models::TagCooccurrence {
@@ -516,7 +568,7 @@ fn get_video_actors(conn: &Connection, video_id: &str) -> Result<Vec<String>> {
 
 fn get_video_tags(conn: &Connection, video_id: &str) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
-        "SELECT t.name FROM tags t JOIN video_tags vt ON t.id = vt.tag_id WHERE vt.video_id = ?1"
+        "SELECT t.name FROM tags t JOIN video_tags vt ON t.id = vt.tag_id WHERE vt.video_id = ?1",
     )?;
     let tags = stmt
         .query_map([video_id], |row| row.get(0))?
@@ -542,6 +594,16 @@ pub fn update_video_metadata(
     conn.execute_batch("BEGIN")?;
 
     let result = (|| -> Result<()> {
+        let existing_status = conn
+            .query_row(
+                "SELECT scrape_status FROM videos WHERE id = ?1",
+                [video_id],
+                |row| row.get::<_, String>(0),
+            )
+            .map(|value| ScrapeStatus::from_str(&value))
+            .unwrap_or(ScrapeStatus::NotScraped);
+        let merged_status = status.merge_with_existing(&existing_status);
+
         // Upsert maker and get its id
         let maker_id: Option<String> = if let Some(maker_name) = maker {
             let new_id = Uuid::new_v4().to_string();
@@ -596,7 +658,7 @@ pub fn update_video_metadata(
                 maker_id,
                 duration.map(|d| d as i64),
                 released_at,
-                status.as_str(),
+                merged_status.as_str(),
                 chrono::Utc::now().to_rfc3339(),
                 video_id,
             ],
@@ -635,27 +697,25 @@ pub fn update_video_metadata(
                 "INSERT OR IGNORE INTO tags (id, name) VALUES (?1, ?2)",
                 params![tag_id, tag_name],
             )?;
-            let actual_id: String = conn.query_row(
-                "SELECT id FROM tags WHERE name = ?1",
-                [tag_name],
-                |row| row.get(0),
-            )?;
+            let actual_id: String =
+                conn.query_row("SELECT id FROM tags WHERE name = ?1", [tag_name], |row| {
+                    row.get(0)
+                })?;
             conn.execute(
                 "INSERT OR IGNORE INTO video_tags (video_id, tag_id) VALUES (?1, ?2)",
                 params![video_id, actual_id],
             )?;
         }
 
-        conn.execute(
-            "DELETE FROM sample_images WHERE video_id = ?1",
-            [video_id],
-        )?;
-        for (i, path) in sample_image_paths.iter().enumerate() {
-            let img_id = Uuid::new_v4().to_string();
-            conn.execute(
-                "INSERT INTO sample_images (id, video_id, path, sort_order) VALUES (?1, ?2, ?3, ?4)",
-                params![img_id, video_id, path, i as u32],
-            )?;
+        if !sample_image_paths.is_empty() {
+            conn.execute("DELETE FROM sample_images WHERE video_id = ?1", [video_id])?;
+            for (i, path) in sample_image_paths.iter().enumerate() {
+                let img_id = Uuid::new_v4().to_string();
+                conn.execute(
+                    "INSERT INTO sample_images (id, video_id, path, sort_order) VALUES (?1, ?2, ?3, ?4)",
+                    params![img_id, video_id, path, i as u32],
+                )?;
+            }
         }
 
         Ok(())
@@ -671,7 +731,7 @@ pub fn update_video_metadata(
 
 pub fn get_videos_to_scrape(conn: &Connection) -> Result<Vec<(String, String)>> {
     let mut stmt = conn.prepare(
-        "SELECT id, code FROM videos WHERE code != '?' AND scrape_status = 'not_scraped'"
+        "SELECT id, code FROM videos WHERE code != '?' AND scrape_status = 'not_scraped'",
     )?;
     let rows = stmt
         .query_map([], |row| {
@@ -701,7 +761,7 @@ pub fn set_favorite(conn: &Connection, id: &str, favorite: bool) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{ActorDetail, Settings, VideoFile, ScrapeStatus};
+    use crate::models::{ActorDetail, ScrapeStatus, Settings, VideoFile};
 
     fn make_test_video(code: &str, title: &str, path: &str) -> Video {
         Video {
@@ -911,11 +971,13 @@ mod tests {
         let video = make_test_video("TEST-001", "Test", "C:/test.mp4");
         upsert_videos(&conn, &[video.clone()]).unwrap();
 
-        let row: (String, Option<String>) = conn.query_row(
-            "SELECT scrape_status, scraped_at FROM videos WHERE id = ?1",
-            [&video.id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        ).unwrap();
+        let row: (String, Option<String>) = conn
+            .query_row(
+                "SELECT scrape_status, scraped_at FROM videos WHERE id = ?1",
+                [&video.id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
 
         assert_eq!(row.0, "not_scraped");
         assert!(row.1.is_none());
@@ -939,14 +1001,21 @@ mod tests {
             Some(7200),
             Some("2023-12-12"),
             &[
-                ActorDetail { name: "Actor One".to_string(), name_kanji: None },
-                ActorDetail { name: "Actor Two".to_string(), name_kanji: None },
+                ActorDetail {
+                    name: "Actor One".to_string(),
+                    name_kanji: None,
+                },
+                ActorDetail {
+                    name: "Actor Two".to_string(),
+                    name_kanji: None,
+                },
             ],
             &["Tag A".to_string(), "Tag B".to_string()],
             None,
             &[],
             ScrapeStatus::Complete,
-        ).unwrap();
+        )
+        .unwrap();
 
         let v = get_video_by_id(&conn, &id).unwrap();
         assert_eq!(v.title, "Scraped Title");
@@ -985,7 +1054,8 @@ mod tests {
             None,
             &[],
             ScrapeStatus::Partial,
-        ).unwrap();
+        )
+        .unwrap();
 
         let v = get_video_by_id(&conn, &id).unwrap();
         assert_eq!(v.title, "Original Title");
@@ -1036,7 +1106,9 @@ mod tests {
         ).unwrap();
 
         let kanji: Option<String> = conn
-            .query_row("SELECT name_kanji FROM actors WHERE id = 'a1'", [], |row| row.get(0))
+            .query_row("SELECT name_kanji FROM actors WHERE id = 'a1'", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(kanji, Some("테스트".to_string()));
     }
@@ -1063,7 +1135,9 @@ mod tests {
 
         // video should have series_id set
         let series_id: Option<String> = conn
-            .query_row("SELECT series_id FROM videos WHERE id = 'v1'", [], |row| row.get(0))
+            .query_row("SELECT series_id FROM videos WHERE id = 'v1'", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert!(series_id.is_some());
     }
@@ -1080,11 +1154,13 @@ mod tests {
         conn.execute(
             "INSERT INTO actors (id, name, name_kanji) VALUES (?1, 'Aoi Rena', '葵レナ')",
             params![actor_id],
-        ).unwrap();
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO video_actors (video_id, actor_id) VALUES (?1, ?2)",
             params![video.id, actor_id],
-        ).unwrap();
+        )
+        .unwrap();
 
         let actors = get_actors(&conn).unwrap();
         assert_eq!(actors.len(), 1);
@@ -1102,14 +1178,16 @@ mod tests {
         conn.execute(
             "INSERT INTO makers (id, name) VALUES (?1, 'S1 STYLE')",
             params![maker_id],
-        ).unwrap();
+        )
+        .unwrap();
 
         let video = make_test_video("ABC-123", "Test", "C:/test.mp4");
         upsert_videos(&conn, &[video.clone()]).unwrap();
         conn.execute(
             "UPDATE videos SET maker_id = ?1 WHERE id = ?2",
             params![maker_id, video.id],
-        ).unwrap();
+        )
+        .unwrap();
 
         let makers = get_makers(&conn).unwrap();
         assert_eq!(makers.len(), 1);
@@ -1126,14 +1204,16 @@ mod tests {
         conn.execute(
             "INSERT INTO series (id, name) VALUES (?1, 'SONE')",
             params![series_id],
-        ).unwrap();
+        )
+        .unwrap();
 
         let video = make_test_video("SONE-001", "Test", "C:/test.mp4");
         upsert_videos(&conn, &[video.clone()]).unwrap();
         conn.execute(
             "UPDATE videos SET series_id = ?1 WHERE id = ?2",
             params![series_id, video.id],
-        ).unwrap();
+        )
+        .unwrap();
 
         let series_list = get_series(&conn).unwrap();
         assert_eq!(series_list.len(), 1);
@@ -1153,11 +1233,13 @@ mod tests {
         conn.execute(
             "INSERT INTO tags (id, name) VALUES (?1, '巨乳')",
             params![tag_id],
-        ).unwrap();
+        )
+        .unwrap();
         conn.execute(
             "INSERT INTO video_tags (video_id, tag_id) VALUES (?1, ?2)",
             params![video.id, tag_id],
-        ).unwrap();
+        )
+        .unwrap();
 
         let tags = get_tags(&conn).unwrap();
         assert_eq!(tags.len(), 1);
@@ -1197,14 +1279,16 @@ mod tests {
         conn.execute(
             "INSERT INTO makers (id, name) VALUES (?1, 'S1 STYLE')",
             params![maker_id],
-        ).unwrap();
+        )
+        .unwrap();
 
         let video = make_test_video("ABC-123", "Test", "C:/test.mp4");
         upsert_videos(&conn, &[video.clone()]).unwrap();
         conn.execute(
             "UPDATE videos SET maker_id = ?1 WHERE id = ?2",
             params![maker_id, video.id],
-        ).unwrap();
+        )
+        .unwrap();
 
         let v = get_video_by_id(&conn, &video.id).unwrap();
         assert_eq!(v.maker_name.as_deref(), Some("S1 STYLE"));
@@ -1228,14 +1312,24 @@ mod tests {
             Some(7200),
             Some("2023-12-12"),
             &[
-                ActorDetail { name: "Aoi Rena".to_string(), name_kanji: Some("葵レナ".to_string()) },
-                ActorDetail { name: "Mita Marin".to_string(), name_kanji: None },
+                ActorDetail {
+                    name: "Aoi Rena".to_string(),
+                    name_kanji: Some("葵レナ".to_string()),
+                },
+                ActorDetail {
+                    name: "Mita Marin".to_string(),
+                    name_kanji: None,
+                },
             ],
             &["巨乳".to_string()],
             Some("S1 STYLE"),
-            &["/samples/abc123_01.jpg".to_string(), "/samples/abc123_02.jpg".to_string()],
+            &[
+                "/samples/abc123_01.jpg".to_string(),
+                "/samples/abc123_02.jpg".to_string(),
+            ],
             ScrapeStatus::Complete,
-        ).unwrap();
+        )
+        .unwrap();
 
         let v = get_video_by_id(&conn, &id).unwrap();
         assert_eq!(v.title, "Scraped Title");
@@ -1277,7 +1371,8 @@ mod tests {
             None,
             &[],
             ScrapeStatus::Complete,
-        ).unwrap();
+        )
+        .unwrap();
 
         let cover_path: Option<String> = conn
             .query_row(
@@ -1288,5 +1383,106 @@ mod tests {
             .unwrap();
 
         assert_eq!(cover_path.as_deref(), Some("C:/covers/sone001.jpg"));
+    }
+
+    #[test]
+    fn test_update_video_metadata_does_not_downgrade_complete_status() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let video = make_test_video("FC2-PPV-1234567", "Original", "C:/test.mp4");
+        let id = video.id.clone();
+        upsert_videos(&conn, &[video]).unwrap();
+
+        update_video_metadata(
+            &conn,
+            &id,
+            Some("Scraped Title"),
+            Some("C:/covers/fc2.jpg"),
+            None,
+            Some(3600),
+            Some("2024-01-01"),
+            &[],
+            &["Tag A".to_string()],
+            None,
+            &["/samples/fc2_01.jpg".to_string()],
+            ScrapeStatus::Complete,
+        )
+        .unwrap();
+
+        update_video_metadata(
+            &conn,
+            &id,
+            None,
+            None,
+            None,
+            None,
+            None,
+            &[],
+            &[],
+            None,
+            &[],
+            ScrapeStatus::NotFound,
+        )
+        .unwrap();
+
+        let video = get_video_by_id(&conn, &id).unwrap();
+        let images = get_sample_images(&conn, &id).unwrap();
+
+        assert_eq!(video.title, "Scraped Title");
+        assert_eq!(video.scrape_status, ScrapeStatus::Complete);
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].path, "/samples/fc2_01.jpg");
+    }
+
+    #[test]
+    fn test_update_video_metadata_keeps_partial_when_refresh_fails() {
+        let conn = open_in_memory().unwrap();
+        init_db(&conn).unwrap();
+
+        let video = make_test_video("ABC-123", "Original", "C:/test.mp4");
+        let id = video.id.clone();
+        upsert_videos(&conn, &[video]).unwrap();
+
+        update_video_metadata(
+            &conn,
+            &id,
+            Some("Scraped Title"),
+            None,
+            None,
+            Some(7200),
+            None,
+            &[ActorDetail {
+                name: "Actor One".to_string(),
+                name_kanji: None,
+            }],
+            &[],
+            None,
+            &[],
+            ScrapeStatus::Partial,
+        )
+        .unwrap();
+
+        update_video_metadata(
+            &conn,
+            &id,
+            None,
+            None,
+            None,
+            None,
+            None,
+            &[],
+            &[],
+            None,
+            &[],
+            ScrapeStatus::NotFound,
+        )
+        .unwrap();
+
+        let video = get_video_by_id(&conn, &id).unwrap();
+
+        assert_eq!(video.title, "Scraped Title");
+        assert_eq!(video.scrape_status, ScrapeStatus::Partial);
+        assert_eq!(video.actors, vec!["Actor One"]);
     }
 }

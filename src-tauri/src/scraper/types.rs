@@ -34,9 +34,21 @@ impl ScrapedMetadata {
 
     /// Complete if title + cover present, and actors present (or FC2 code which has no actors)
     pub fn is_complete(&self, code: &str) -> bool {
-        self.title.is_some()
-            && self.cover_url.is_some()
-            && (!self.actors.is_empty() || code.starts_with("FC2-PPV"))
+        if self.title.is_none() || self.cover_url.is_none() {
+            return false;
+        }
+
+        if code.starts_with("FC2-PPV") {
+            return true;
+        }
+
+        !self.actors.is_empty()
+            || !self.actor_details.is_empty()
+            || self.duration.is_some()
+            || self.released_at.is_some()
+            || self.maker.is_some()
+            || self.series.is_some()
+            || !self.tags.is_empty()
     }
 }
 
@@ -76,5 +88,35 @@ impl MetadataSource {
             Self::R18Dev => "r18dev",
             Self::JavBus => "javbus",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ScrapedMetadata;
+
+    #[test]
+    fn test_general_metadata_with_rich_fields_is_complete_without_actors() {
+        let meta = ScrapedMetadata {
+            title: Some("Example Title".to_string()),
+            cover_url: Some("https://example.com/cover.jpg".to_string()),
+            duration: Some(7200),
+            released_at: Some("2024-01-01".to_string()),
+            maker: Some("Example Maker".to_string()),
+            ..Default::default()
+        };
+
+        assert!(meta.is_complete("NCYF-025"));
+    }
+
+    #[test]
+    fn test_general_metadata_with_only_title_and_cover_is_not_complete() {
+        let meta = ScrapedMetadata {
+            title: Some("Example Title".to_string()),
+            cover_url: Some("https://example.com/cover.jpg".to_string()),
+            ..Default::default()
+        };
+
+        assert!(!meta.is_complete("ABP-123"));
     }
 }

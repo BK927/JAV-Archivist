@@ -1,5 +1,48 @@
+use super::types::{ScrapeError, ScrapedActor, ScrapedMetadata};
 use scraper::{Html, Selector};
-use super::types::{ScrapedMetadata, ScrapedActor, ScrapeError};
+
+fn parse_javbus_search_results(html: &str, code: &str) -> Result<ScrapedMetadata, ScrapeError> {
+    let document = Html::parse_document(html);
+    let movie_box_sel = Selector::parse("a.movie-box").unwrap();
+    let img_sel = Selector::parse("img").unwrap();
+    let date_sel = Selector::parse("date").unwrap();
+
+    for movie_box in document.select(&movie_box_sel) {
+        let dates: Vec<String> = movie_box
+            .select(&date_sel)
+            .map(|el| el.text().collect::<String>().trim().to_string())
+            .filter(|value| !value.is_empty())
+            .collect();
+
+        let Some(found_code) = dates.first() else {
+            continue;
+        };
+        if !found_code.eq_ignore_ascii_case(code) {
+            continue;
+        }
+
+        let mut meta = ScrapedMetadata::default();
+        if let Some(img) = movie_box.select(&img_sel).next() {
+            meta.cover_url = img.value().attr("src").and_then(|src| {
+                super::normalize_media_url_with_base(src, "https://www.javbus.com")
+            });
+            meta.title = img
+                .value()
+                .attr("title")
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+        }
+        meta.released_at = dates.get(1).cloned();
+
+        if meta.has_any_field() {
+            return Ok(meta);
+        }
+    }
+
+    Err(ScrapeError::ParseError(
+        "no exact search match found".to_string(),
+    ))
+}
 
 pub(crate) fn parse_javbus_html(html: &str, code: &str) -> Result<ScrapedMetadata, ScrapeError> {
     let document = Html::parse_document(html);
@@ -21,10 +64,7 @@ pub(crate) fn parse_javbus_html(html: &str, code: &str) -> Result<ScrapedMetadat
     // 2. Cover image
     let cover_sel = Selector::parse("a.bigImage img").unwrap();
     if let Some(el) = document.select(&cover_sel).next() {
-        meta.cover_url = el
-            .value()
-            .attr("src")
-            .and_then(super::normalize_media_url);
+        meta.cover_url = el.value().attr("src").and_then(super::normalize_media_url);
     }
 
     // 3. Info fields from span.header
@@ -32,7 +72,10 @@ pub(crate) fn parse_javbus_html(html: &str, code: &str) -> Result<ScrapedMetadat
     let a_sel = Selector::parse("a").unwrap();
     for p in document.select(&header_sel) {
         let text = p.text().collect::<String>();
-        let link_text = p.select(&a_sel).next().map(|a| a.text().collect::<String>());
+        let link_text = p
+            .select(&a_sel)
+            .next()
+            .map(|a| a.text().collect::<String>());
 
         if text.contains("發行日期") {
             // "發行日期: 2022-09-22" → "2022-09-22"
@@ -76,9 +119,9 @@ pub(crate) fn parse_javbus_html(html: &str, code: &str) -> Result<ScrapedMetadat
 
         let photo_url = img_src.or_else(|| {
             el.value().attr("href").and_then(|href| {
-                href.rsplit('/').next().map(|id| {
-                    format!("https://www.javbus.com/pics/actress/{}_a.jpg", id)
-                })
+                href.rsplit('/')
+                    .next()
+                    .map(|id| format!("https://www.javbus.com/pics/actress/{}_a.jpg", id))
             })
         });
 
@@ -110,14 +153,16 @@ pub(crate) fn parse_javbus_html(html: &str, code: &str) -> Result<ScrapedMetadat
     }
 
     if !meta.has_any_field() {
-        return Err(ScrapeError::ParseError("no metadata found in HTML".to_string()));
+        return Err(ScrapeError::ParseError(
+            "no metadata found in HTML".to_string(),
+        ));
     }
 
     Ok(meta)
 }
 
 pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadata, ScrapeError> {
-    let url = format!("https://www.javbus.com/{}", code);
+    let url = format!("https://www.javbus.com/search/{}", code);
     tracing::debug!("javbus: fetching {}", url);
     let resp = client
         .get(&url)
@@ -134,11 +179,7 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
         tracing::warn!("javbus: rate limited (HTTP {}) for code={}", status, code);
         return Err(ScrapeError::RateLimited);
     }
-    if status == 301 || status == 302 {
-        tracing::warn!("javbus: redirected (HTTP {}) for code={}", status, code);
-        return Err(ScrapeError::NotFound);
-    }
-    if status != 200 {
+    if status != 200 && status != 301 && status != 302 {
         tracing::warn!("javbus: unexpected HTTP {} for code={}", status, code);
         return Err(ScrapeError::NetworkError(format!("HTTP {}", status)));
     }
@@ -149,13 +190,21 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
         .map_err(|e| ScrapeError::NetworkError(e.to_string()))?;
 
     if body.len() < 1000 {
-        tracing::warn!("javbus: response body too short ({} bytes) for code={}", body.len(), code);
+        tracing::warn!(
+            "javbus: response body too short ({} bytes) for code={}",
+            body.len(),
+            code
+        );
         return Err(ScrapeError::NotFound);
     }
 
-    match parse_javbus_html(&body, code) {
+    match parse_javbus_search_results(&body, code).or_else(|_| parse_javbus_html(&body, code)) {
         Ok(meta) => {
-            tracing::debug!("javbus: parsed metadata for code={} title={:?}", code, meta.title);
+            tracing::debug!(
+                "javbus: parsed metadata for code={} title={:?}",
+                code,
+                meta.title
+            );
             Ok(meta)
         }
         Err(e) => {
@@ -215,5 +264,74 @@ mod tests {
         let html = r#"<div class="container"><h3>ABC-123 Some Title</h3></div>"#;
         let meta = parse_javbus_html(html, "ABC-123").unwrap();
         assert_eq!(meta.title.as_deref(), Some("Some Title"));
+    }
+
+    #[test]
+    fn test_parse_javbus_search_results_prefers_exact_code_match() {
+        let html = r#"<!DOCTYPE html>
+<html>
+<body>
+  <div id="waterfall">
+    <div class="item">
+      <a class="movie-box" href="https://www.javbus.com/ABPN-001">
+        <div class="photo-frame">
+          <img src="/pics/thumb/wrong.jpg" title="Wrong Match">
+        </div>
+        <div class="photo-info">
+          <span>Wrong Match<br />
+            <date>ABPN-001</date> / <date>2020-03-14</date>
+          </span>
+        </div>
+      </a>
+    </div>
+    <div class="item">
+      <a class="movie-box" href="https://www.javbus.com/ABP-001">
+        <div class="photo-frame">
+          <img src="/pics/thumb/right.jpg" title="Exact Match">
+        </div>
+        <div class="photo-info">
+          <span>Exact Match<br />
+            <date>ABP-001</date> / <date>2013-06-28</date>
+          </span>
+        </div>
+      </a>
+    </div>
+  </div>
+</body>
+</html>"#;
+
+        let meta = parse_javbus_search_results(html, "ABP-001").unwrap();
+
+        assert_eq!(meta.title.as_deref(), Some("Exact Match"));
+        assert_eq!(
+            meta.cover_url.as_deref(),
+            Some("https://www.javbus.com/pics/thumb/right.jpg")
+        );
+        assert_eq!(meta.released_at.as_deref(), Some("2013-06-28"));
+    }
+
+    #[test]
+    fn test_parse_javbus_search_results_errors_without_exact_match() {
+        let html = r#"<!DOCTYPE html>
+<html>
+<body>
+  <div id="waterfall">
+    <div class="item">
+      <a class="movie-box" href="https://www.javbus.com/ABPN-001">
+        <div class="photo-frame">
+          <img src="/pics/thumb/wrong.jpg" title="Wrong Match">
+        </div>
+        <div class="photo-info">
+          <span>Wrong Match<br />
+            <date>ABPN-001</date> / <date>2020-03-14</date>
+          </span>
+        </div>
+      </a>
+    </div>
+  </div>
+</body>
+</html>"#;
+
+        assert!(parse_javbus_search_results(html, "ABP-001").is_err());
     }
 }

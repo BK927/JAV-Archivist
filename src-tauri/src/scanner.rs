@@ -1,18 +1,16 @@
+use crate::models::{ScrapeStatus, Video, VideoFile};
+use chrono::Utc;
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::LazyLock;
-use walkdir::WalkDir;
 use uuid::Uuid;
-use chrono::Utc;
-use crate::models::{Video, VideoFile, ScrapeStatus};
+use walkdir::WalkDir;
 
-static FC2_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)FC2[-\s]?PPV[-\s]?(\d+)").unwrap()
-});
+static FC2_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)FC2(?:[-_\s]?PPV)?[-_\s]?(\d{5,8})").unwrap());
 
-static GENERAL_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?i)([A-Z]{2,6})-(\d{3,5})").unwrap()
-});
+static GENERAL_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)([A-Z]{2,6})-(\d{3,5})").unwrap());
 
 /// Prefixes that look like JAV codes but are actually website/platform names.
 const NON_JAV_PREFIXES: &[&str] = &["FANTIA"];
@@ -53,10 +51,7 @@ pub fn scan_folders(folders: &[String]) -> Result<Vec<Video>, String> {
 
     for folder in folders {
         tracing::info!("scanner: scanning folder {:?}", folder);
-        for entry in WalkDir::new(folder)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
+        for entry in WalkDir::new(folder).into_iter().filter_map(|e| e.ok()) {
             let path = entry.path();
             if !path.is_file() {
                 continue;
@@ -178,8 +173,8 @@ fn group_by_code(files: Vec<ScannedFile>) -> Vec<Video> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn test_general_code() {
@@ -239,6 +234,30 @@ mod tests {
         assert_eq!(
             extract_code("fc2-ppv-1234567"),
             Some("FC2-PPV-1234567".to_string())
+        );
+    }
+
+    #[test]
+    fn test_fc2_without_ppv_still_extracts_code() {
+        assert_eq!(
+            extract_code("fc2-521444【個人撮影】肉オナホの使い方"),
+            Some("FC2-PPV-521444".to_string())
+        );
+        assert_eq!(
+            extract_code("fc2_1864525"),
+            Some("FC2-PPV-1864525".to_string())
+        );
+    }
+
+    #[test]
+    fn test_fc2_with_suffix_noise_still_extracts_code() {
+        assert_eq!(
+            extract_code("fc2-ppv-1997904-nyap2p.com"),
+            Some("FC2-PPV-1997904".to_string())
+        );
+        assert_eq!(
+            extract_code("hhd800.com@FC2-PPV-1802609"),
+            Some("FC2-PPV-1802609".to_string())
         );
     }
 
