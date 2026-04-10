@@ -21,7 +21,7 @@
       "csp": null,
       "assetProtocol": {
         "enable": true,
-        "scope": ["$EXE/data/**", "$VIDEO/**", "$DOCUMENT/**", "$DOWNLOAD/**"]
+        "scope": ["$APPLOCALDATA/**", "$VIDEO/**", "$DOCUMENT/**", "$DOWNLOAD/**"]
       }
     }
   },

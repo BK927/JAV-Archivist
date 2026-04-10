@@ -6,12 +6,14 @@ mod scanner;
 mod scraper;
 
 use models::{Settings, ScrapeStatus, Video, Actor, Maker, Series as SeriesModel, Tag, TagCooccurrence, SampleImage};
-use std::path::PathBuf;
+use std::collections::BTreeSet;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::Emitter;
 use tauri::Manager;
 
+struct DataDir(PathBuf);
 struct DbPath(PathBuf);
 struct ThumbnailsDir(PathBuf);
 struct ActorsDir(PathBuf);
@@ -26,6 +28,51 @@ struct ScrapeProgressEvent {
     current: usize,
     total: usize,
     video: Option<Video>,
+}
+
+fn asset_scope_paths(settings: &Settings, data_dir: &Path) -> Vec<PathBuf> {
+    let mut seen = BTreeSet::new();
+    let mut paths = Vec::new();
+
+    let mut push_unique = |path: PathBuf| {
+        if seen.insert(path.clone()) {
+            paths.push(path);
+        }
+    };
+
+    push_unique(data_dir.to_path_buf());
+
+    for folder in &settings.scan_folders {
+        let trimmed = folder.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        push_unique(PathBuf::from(trimmed));
+    }
+
+    paths
+}
+
+fn sync_asset_protocol_scope<R: tauri::Runtime, M: tauri::Manager<R>>(
+    manager: &M,
+    settings: &Settings,
+    data_dir: &Path,
+) -> Result<(), String> {
+    let scope = manager.asset_protocol_scope();
+
+    for path in asset_scope_paths(settings, data_dir) {
+        if path.is_dir() {
+            scope.allow_directory(&path, true).map_err(|e| e.to_string())?;
+            tracing::debug!("asset scope allowed directory: {}", path.display());
+        } else if path.is_file() {
+            scope.allow_file(&path).map_err(|e| e.to_string())?;
+            tracing::debug!("asset scope allowed file: {}", path.display());
+        } else {
+            tracing::warn!("asset scope path does not exist, skipping: {}", path.display());
+        }
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -83,10 +130,16 @@ fn get_settings(db: tauri::State<'_, DbPath>) -> Result<Settings, String> {
 }
 
 #[tauri::command]
-fn save_settings(db: tauri::State<'_, DbPath>, settings: Settings) -> Result<(), String> {
+fn save_settings(
+    app: tauri::AppHandle,
+    db: tauri::State<'_, DbPath>,
+    data_dir: tauri::State<'_, DataDir>,
+    settings: Settings,
+) -> Result<(), String> {
     tracing::info!("cmd: save_settings");
     let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
-    db::save_settings(&conn, &settings).map_err(|e| e.to_string())
+    db::save_settings(&conn, &settings).map_err(|e| e.to_string())?;
+    sync_asset_protocol_scope(&app, &settings, &data_dir.0)
 }
 
 #[tauri::command]
@@ -367,6 +420,10 @@ pub fn run() {
                 tracing::info!("Logging initialized at level: {}", settings.log_level);
             }
 
+            sync_asset_protocol_scope(_app, &settings, &data_dir)
+                .map_err(|e| e.to_string())?;
+
+            _app.manage(DataDir(data_dir.clone()));
             _app.manage(DbPath(db_path));
 
             let thumbnails_dir = data_dir.join("thumbnails");
@@ -407,4 +464,41 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::asset_scope_paths;
+    use crate::models::Settings;
+    use std::path::Path;
+
+    #[test]
+    fn asset_scope_paths_includes_data_dir_and_unique_scan_folders() {
+        let settings = Settings {
+            scan_folders: vec![
+                "C:/Videos".to_string(),
+                "  C:/Videos  ".to_string(),
+                "".to_string(),
+                "D:/Archive".to_string(),
+            ],
+            player_path: None,
+            log_enabled: true,
+            log_level: "info".to_string(),
+        };
+
+        let paths = asset_scope_paths(&settings, Path::new("C:/App/data"));
+        let rendered: Vec<String> = paths
+            .iter()
+            .map(|path| path.to_string_lossy().to_string())
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec![
+                "C:/App/data".to_string(),
+                "C:/Videos".to_string(),
+                "D:/Archive".to_string(),
+            ]
+        );
+    }
 }
