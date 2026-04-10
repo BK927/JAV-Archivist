@@ -16,7 +16,7 @@ const LOG_LEVEL_LABELS: Record<string, string> = { error: 'Error', warn: 'Warn',
 
 export default function SettingsPage() {
   const { run } = useTauriCommand()
-  const { setVideos, setScanning, isScanning } = useLibraryStore()
+  const { setScanning, isScanning } = useLibraryStore()
   const { setCurrentVideo } = usePlayerStore()
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
@@ -50,7 +50,7 @@ export default function SettingsPage() {
   const handleRescan = async () => {
     setScanning(true)
     const videos = await run<Video[]>('scan_library', {}, [])
-    setVideos(videos)
+    useLibraryStore.getState().setVideos(videos)
     setScanning(false)
   }
 
@@ -209,7 +209,7 @@ export default function SettingsPage() {
                   setIsResetting(true)
                   try {
                     await run('reset_data', {}, undefined)
-                    setVideos([])
+                    useLibraryStore.getState().setVideos([])
                     setCurrentVideo(null)
                   } catch {
                     // error handled by tracing
