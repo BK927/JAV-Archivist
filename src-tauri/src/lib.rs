@@ -6,12 +6,15 @@ mod scanner;
 mod scraper;
 mod watcher;
 
-use models::{Settings, ScrapeStatus, Video, Actor, Maker, Series as SeriesModel, Tag, TagCooccurrence, SampleImage};
+use models::{
+    Actor, Maker, SampleImage, ScrapeStatus, Series as SeriesModel, Settings, Tag, TagCooccurrence,
+    Video,
+};
+use notify::RecommendedWatcher;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use notify::RecommendedWatcher;
 use tauri::Emitter;
 use tauri::Manager;
 
@@ -65,13 +68,18 @@ fn sync_asset_protocol_scope<R: tauri::Runtime, M: tauri::Manager<R>>(
 
     for path in asset_scope_paths(settings, data_dir) {
         if path.is_dir() {
-            scope.allow_directory(&path, true).map_err(|e| e.to_string())?;
+            scope
+                .allow_directory(&path, true)
+                .map_err(|e| e.to_string())?;
             tracing::debug!("asset scope allowed directory: {}", path.display());
         } else if path.is_file() {
             scope.allow_file(&path).map_err(|e| e.to_string())?;
             tracing::debug!("asset scope allowed file: {}", path.display());
         } else {
-            tracing::warn!("asset scope path does not exist, skipping: {}", path.display());
+            tracing::warn!(
+                "asset scope path does not exist, skipping: {}",
+                path.display()
+            );
         }
     }
 
@@ -145,11 +153,12 @@ fn save_settings(
     db::save_settings(&conn, &settings).map_err(|e| e.to_string())?;
 
     // 워처 재시작 (폴더 목록이 변경되었을 수 있음)
-    let new_watcher = watcher::start(
-        app.clone(),
-        &settings.scan_folders,
-        db.0.clone(),
-    ).map_err(|e| { tracing::warn!("watcher restart failed: {}", e); e }).ok();
+    let new_watcher = watcher::start(app.clone(), &settings.scan_folders, db.0.clone())
+        .map_err(|e| {
+            tracing::warn!("watcher restart failed: {}", e);
+            e
+        })
+        .ok();
     *watcher_handle.0.lock().unwrap() = new_watcher;
 
     sync_asset_protocol_scope(&app, &settings, &data_dir.0)
@@ -177,7 +186,10 @@ fn get_tags(db: tauri::State<'_, DbPath>) -> Result<Vec<Tag>, String> {
 }
 
 #[tauri::command]
-fn get_tag_cooccurrence(db: tauri::State<'_, DbPath>, tag_id: String) -> Result<Vec<TagCooccurrence>, String> {
+fn get_tag_cooccurrence(
+    db: tauri::State<'_, DbPath>,
+    tag_id: String,
+) -> Result<Vec<TagCooccurrence>, String> {
     tracing::info!("cmd: get_tag_cooccurrence tag_id={}", tag_id);
     let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
     db::get_tag_cooccurrence(&conn, &tag_id).map_err(|e| e.to_string())
@@ -191,7 +203,10 @@ fn get_makers(db: tauri::State<'_, DbPath>) -> Result<Vec<Maker>, String> {
 }
 
 #[tauri::command]
-fn get_sample_images(db: tauri::State<'_, DbPath>, video_id: String) -> Result<Vec<SampleImage>, String> {
+fn get_sample_images(
+    db: tauri::State<'_, DbPath>,
+    video_id: String,
+) -> Result<Vec<SampleImage>, String> {
     tracing::info!("cmd: get_sample_images video_id={}", video_id);
     let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
     db::get_sample_images(&conn, &video_id).map_err(|e| e.to_string())
@@ -217,7 +232,10 @@ async fn scrape_video(
     .map_err(|e| e.to_string())??;
 
     if code == "?" {
-        tracing::warn!("scrape_video: video_id={} has unknown code, skipping", video_id);
+        tracing::warn!(
+            "scrape_video: video_id={} has unknown code, skipping",
+            video_id
+        );
         return Err("Cannot scrape video with unknown code".to_string());
     }
 
@@ -230,13 +248,18 @@ async fn scrape_video(
 
     let db_path = db.0.clone();
     let vid_id = video_id.clone();
-    let actor_details: Vec<models::ActorDetail> = result.metadata.actor_details.iter().map(|a| {
-        models::ActorDetail {
+    let actor_details: Vec<models::ActorDetail> = result
+        .metadata
+        .actor_details
+        .iter()
+        .map(|a| models::ActorDetail {
             name: a.name.clone(),
             name_kanji: a.name_kanji.clone(),
-        }
-    }).collect();
-    let sample_paths: Vec<String> = result.sample_image_paths.iter()
+        })
+        .collect();
+    let sample_paths: Vec<String> = result
+        .sample_image_paths
+        .iter()
         .filter_map(|p| p.to_str().map(|s| s.to_string()))
         .collect();
     let actor_photo_map = result.actor_photo_paths.clone();
@@ -327,13 +350,18 @@ async fn scrape_videos(
 
         let db_path2 = db.0.clone();
         let vid_id = video_id.clone();
-        let actor_details: Vec<models::ActorDetail> = result.metadata.actor_details.iter().map(|a| {
-            models::ActorDetail {
+        let actor_details: Vec<models::ActorDetail> = result
+            .metadata
+            .actor_details
+            .iter()
+            .map(|a| models::ActorDetail {
                 name: a.name.clone(),
                 name_kanji: a.name_kanji.clone(),
-            }
-        }).collect();
-        let sample_paths: Vec<String> = result.sample_image_paths.iter()
+            })
+            .collect();
+        let sample_paths: Vec<String> = result
+            .sample_image_paths
+            .iter()
             .filter_map(|p| p.to_str().map(|s| s.to_string()))
             .collect();
         let actor_photo_map = result.actor_photo_paths.clone();
@@ -374,13 +402,28 @@ async fn scrape_videos(
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
 
-        let _ = app.emit("scrape-progress", ScrapeProgressEvent {
-            video_id,
-            status: evt_status,
-            current: i + 1,
-            total,
-            video: updated_video,
-        });
+        // Increment retry_count for transient failures (status stays NotScraped)
+        if matches!(evt_status, ScrapeStatus::NotScraped) {
+            let db_path3 = db.0.clone();
+            let vid_id2 = video_id.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                if let Ok(conn) = db::open(db_path3.to_str().unwrap()) {
+                    let _ = db::increment_retry_count(&conn, &vid_id2);
+                }
+            })
+            .await;
+        }
+
+        let _ = app.emit(
+            "scrape-progress",
+            ScrapeProgressEvent {
+                video_id,
+                status: evt_status,
+                current: i + 1,
+                total,
+                video: updated_video,
+            },
+        );
     }
 
     tracing::info!("scrape_videos: complete, processed {}", total);
@@ -396,10 +439,7 @@ fn cancel_scrape(cancel: tauri::State<'_, ScrapeCancel>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn reset_scrape_status(
-    db: tauri::State<'_, DbPath>,
-    video_ids: Vec<String>,
-) -> Result<(), String> {
+fn reset_scrape_status(db: tauri::State<'_, DbPath>, video_ids: Vec<String>) -> Result<(), String> {
     tracing::info!("cmd: reset_scrape_status count={}", video_ids.len());
     let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
     db::reset_scrape_status(&conn, &video_ids).map_err(|e| e.to_string())?;
@@ -435,17 +475,16 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|_app| {
-            let exe_path = std::env::current_exe()
-                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-            let exe_dir = exe_path.parent()
+            let exe_path =
+                std::env::current_exe().map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+            let exe_dir = exe_path
+                .parent()
                 .ok_or_else(|| "Cannot determine executable directory".to_string())?;
             let data_dir = exe_dir.join("data");
             std::fs::create_dir_all(&data_dir)?;
             let db_path = data_dir.join("library.db");
-            let conn = db::open(db_path.to_str().unwrap())
-                .map_err(|e| e.to_string())?;
-            db::init_db(&conn)
-                .map_err(|e| e.to_string())?;
+            let conn = db::open(db_path.to_str().unwrap()).map_err(|e| e.to_string())?;
+            db::init_db(&conn).map_err(|e| e.to_string())?;
 
             let settings = db::get_settings(&conn).map_err(|e| e.to_string())?;
             if settings.log_enabled {
@@ -454,8 +493,7 @@ pub fn run() {
                 tracing::info!("Logging initialized at level: {}", settings.log_level);
             }
 
-            sync_asset_protocol_scope(_app, &settings, &data_dir)
-                .map_err(|e| e.to_string())?;
+            sync_asset_protocol_scope(_app, &settings, &data_dir).map_err(|e| e.to_string())?;
 
             _app.manage(DataDir(data_dir.clone()));
             _app.manage(DbPath(db_path.clone()));
@@ -479,7 +517,12 @@ pub fn run() {
                 _app.handle().clone(),
                 &settings.scan_folders,
                 db_path.clone(),
-            ).map_err(|e| { tracing::warn!("watcher failed to start: {}", e); e }).ok();
+            )
+            .map_err(|e| {
+                tracing::warn!("watcher failed to start: {}", e);
+                e
+            })
+            .ok();
             _app.manage(WatcherHandle(Mutex::new(watcher)));
 
             Ok(())
