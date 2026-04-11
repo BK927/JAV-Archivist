@@ -6,13 +6,17 @@ mod scanner;
 mod scraper;
 mod watcher;
 
-use models::{Settings, ScrapeStatus, Video, Actor, Maker, Series as SeriesModel, Tag, TagCooccurrence, SampleImage};
+use models::{
+    Actor, Maker, SampleImage, ScrapeStatus, Series as SeriesModel, Settings, Tag, TagCooccurrence,
+    Video,
+};
+use notify::RecommendedWatcher;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use notify::RecommendedWatcher;
 use tauri::Emitter;
+use tauri::Listener;
 use tauri::Manager;
 
 struct DataDir(PathBuf);
@@ -21,6 +25,7 @@ struct ThumbnailsDir(PathBuf);
 struct ActorsDir(PathBuf);
 struct SamplesDir(PathBuf);
 struct ScrapeCancel(Arc<AtomicBool>);
+struct ScrapeRunning(Arc<AtomicBool>);
 struct WatcherHandle(Mutex<Option<RecommendedWatcher>>);
 
 #[derive(Clone, serde::Serialize)]
@@ -65,13 +70,18 @@ fn sync_asset_protocol_scope<R: tauri::Runtime, M: tauri::Manager<R>>(
 
     for path in asset_scope_paths(settings, data_dir) {
         if path.is_dir() {
-            scope.allow_directory(&path, true).map_err(|e| e.to_string())?;
+            scope
+                .allow_directory(&path, true)
+                .map_err(|e| e.to_string())?;
             tracing::debug!("asset scope allowed directory: {}", path.display());
         } else if path.is_file() {
             scope.allow_file(&path).map_err(|e| e.to_string())?;
             tracing::debug!("asset scope allowed file: {}", path.display());
         } else {
-            tracing::warn!("asset scope path does not exist, skipping: {}", path.display());
+            tracing::warn!(
+                "asset scope path does not exist, skipping: {}",
+                path.display()
+            );
         }
     }
 
@@ -85,6 +95,20 @@ fn scan_library(db: tauri::State<'_, DbPath>) -> Result<Vec<Video>, String> {
     let settings = db::get_settings(&conn).map_err(|e| e.to_string())?;
     let scanned = scanner::scan_folders(&settings.scan_folders)?;
     db::upsert_videos(&conn, &scanned).map_err(|e| e.to_string())?;
+
+    // Remove orphaned videos (in DB but not on filesystem)
+    let scanned_ids: std::collections::HashSet<String> =
+        scanned.iter().map(|v| v.id.clone()).collect();
+    let all_db_ids = db::get_all_video_ids(&conn).map_err(|e| e.to_string())?;
+    let orphan_ids: Vec<String> = all_db_ids
+        .into_iter()
+        .filter(|id| !scanned_ids.contains(id))
+        .collect();
+    if !orphan_ids.is_empty() {
+        tracing::info!("scan_library: removing {} orphaned videos", orphan_ids.len());
+        db::delete_videos(&conn, &orphan_ids).map_err(|e| e.to_string())?;
+    }
+
     db::get_all_videos(&conn).map_err(|e| e.to_string())
 }
 
@@ -145,11 +169,12 @@ fn save_settings(
     db::save_settings(&conn, &settings).map_err(|e| e.to_string())?;
 
     // 워처 재시작 (폴더 목록이 변경되었을 수 있음)
-    let new_watcher = watcher::start(
-        app.clone(),
-        &settings.scan_folders,
-        db.0.clone(),
-    ).map_err(|e| { tracing::warn!("watcher restart failed: {}", e); e }).ok();
+    let new_watcher = watcher::start(app.clone(), &settings.scan_folders, db.0.clone())
+        .map_err(|e| {
+            tracing::warn!("watcher restart failed: {}", e);
+            e
+        })
+        .ok();
     *watcher_handle.0.lock().unwrap() = new_watcher;
 
     sync_asset_protocol_scope(&app, &settings, &data_dir.0)
@@ -177,7 +202,10 @@ fn get_tags(db: tauri::State<'_, DbPath>) -> Result<Vec<Tag>, String> {
 }
 
 #[tauri::command]
-fn get_tag_cooccurrence(db: tauri::State<'_, DbPath>, tag_id: String) -> Result<Vec<TagCooccurrence>, String> {
+fn get_tag_cooccurrence(
+    db: tauri::State<'_, DbPath>,
+    tag_id: String,
+) -> Result<Vec<TagCooccurrence>, String> {
     tracing::info!("cmd: get_tag_cooccurrence tag_id={}", tag_id);
     let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
     db::get_tag_cooccurrence(&conn, &tag_id).map_err(|e| e.to_string())
@@ -191,7 +219,10 @@ fn get_makers(db: tauri::State<'_, DbPath>) -> Result<Vec<Maker>, String> {
 }
 
 #[tauri::command]
-fn get_sample_images(db: tauri::State<'_, DbPath>, video_id: String) -> Result<Vec<SampleImage>, String> {
+fn get_sample_images(
+    db: tauri::State<'_, DbPath>,
+    video_id: String,
+) -> Result<Vec<SampleImage>, String> {
     tracing::info!("cmd: get_sample_images video_id={}", video_id);
     let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
     db::get_sample_images(&conn, &video_id).map_err(|e| e.to_string())
@@ -217,7 +248,10 @@ async fn scrape_video(
     .map_err(|e| e.to_string())??;
 
     if code == "?" {
-        tracing::warn!("scrape_video: video_id={} has unknown code, skipping", video_id);
+        tracing::warn!(
+            "scrape_video: video_id={} has unknown code, skipping",
+            video_id
+        );
         return Err("Cannot scrape video with unknown code".to_string());
     }
 
@@ -230,13 +264,18 @@ async fn scrape_video(
 
     let db_path = db.0.clone();
     let vid_id = video_id.clone();
-    let actor_details: Vec<models::ActorDetail> = result.metadata.actor_details.iter().map(|a| {
-        models::ActorDetail {
+    let actor_details: Vec<models::ActorDetail> = result
+        .metadata
+        .actor_details
+        .iter()
+        .map(|a| models::ActorDetail {
             name: a.name.clone(),
             name_kanji: a.name_kanji.clone(),
-        }
-    }).collect();
-    let sample_paths: Vec<String> = result.sample_image_paths.iter()
+        })
+        .collect();
+    let sample_paths: Vec<String> = result
+        .sample_image_paths
+        .iter()
         .filter_map(|p| p.to_str().map(|s| s.to_string()))
         .collect();
     let actor_photo_map = result.actor_photo_paths.clone();
@@ -284,10 +323,14 @@ async fn scrape_videos(
     actors_state: tauri::State<'_, ActorsDir>,
     samples_state: tauri::State<'_, SamplesDir>,
     cancel: tauri::State<'_, ScrapeCancel>,
+    scrape_running: tauri::State<'_, ScrapeRunning>,
     app: tauri::AppHandle,
     video_ids: Vec<String>,
 ) -> Result<(), String> {
     tracing::info!("cmd: scrape_videos count={}", video_ids.len());
+    // Mark scrape as running; prevents concurrent auto-scrape
+    scrape_running.0.store(true, Ordering::SeqCst);
+    let running_flag = scrape_running.0.clone();
     let db_path = db.0.clone();
     let thumbnails_dir = thumbnails.0.clone();
     let actors_dir = actors_state.0.clone();
@@ -327,13 +370,18 @@ async fn scrape_videos(
 
         let db_path2 = db.0.clone();
         let vid_id = video_id.clone();
-        let actor_details: Vec<models::ActorDetail> = result.metadata.actor_details.iter().map(|a| {
-            models::ActorDetail {
+        let actor_details: Vec<models::ActorDetail> = result
+            .metadata
+            .actor_details
+            .iter()
+            .map(|a| models::ActorDetail {
                 name: a.name.clone(),
                 name_kanji: a.name_kanji.clone(),
-            }
-        }).collect();
-        let sample_paths: Vec<String> = result.sample_image_paths.iter()
+            })
+            .collect();
+        let sample_paths: Vec<String> = result
+            .sample_image_paths
+            .iter()
             .filter_map(|p| p.to_str().map(|s| s.to_string()))
             .collect();
         let actor_photo_map = result.actor_photo_paths.clone();
@@ -374,17 +422,33 @@ async fn scrape_videos(
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
 
-        let _ = app.emit("scrape-progress", ScrapeProgressEvent {
-            video_id,
-            status: evt_status,
-            current: i + 1,
-            total,
-            video: updated_video,
-        });
+        // Increment retry_count for transient failures (status stays NotScraped)
+        if matches!(evt_status, ScrapeStatus::NotScraped) {
+            let db_path3 = db.0.clone();
+            let vid_id2 = video_id.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                if let Ok(conn) = db::open(db_path3.to_str().unwrap()) {
+                    let _ = db::increment_retry_count(&conn, &vid_id2);
+                }
+            })
+            .await;
+        }
+
+        let _ = app.emit(
+            "scrape-progress",
+            ScrapeProgressEvent {
+                video_id,
+                status: evt_status,
+                current: i + 1,
+                total,
+                video: updated_video,
+            },
+        );
     }
 
     tracing::info!("scrape_videos: complete, processed {}", total);
     let _ = app.emit("scrape-complete", total);
+    running_flag.store(false, Ordering::SeqCst);
     Ok(())
 }
 
@@ -396,10 +460,7 @@ fn cancel_scrape(cancel: tauri::State<'_, ScrapeCancel>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn reset_scrape_status(
-    db: tauri::State<'_, DbPath>,
-    video_ids: Vec<String>,
-) -> Result<(), String> {
+fn reset_scrape_status(db: tauri::State<'_, DbPath>, video_ids: Vec<String>) -> Result<(), String> {
     tracing::info!("cmd: reset_scrape_status count={}", video_ids.len());
     let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
     db::reset_scrape_status(&conn, &video_ids).map_err(|e| e.to_string())?;
@@ -429,23 +490,163 @@ fn reset_data(
     Ok(())
 }
 
+fn start_auto_scrape(app: &tauri::AppHandle, db_path: &std::path::Path, thumbnails_dir: &std::path::Path, actors_dir: &std::path::Path, samples_dir: &std::path::Path, cancel_flag: Arc<AtomicBool>, scrape_running: Arc<AtomicBool>) {
+    // Skip if a scrape (manual or auto) is already running
+    if scrape_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        tracing::info!("auto_scrape: skipped, scrape already in progress");
+        return;
+    }
+
+    let db_path = db_path.to_path_buf();
+    let thumbnails_dir = thumbnails_dir.to_path_buf();
+    let actors_dir = actors_dir.to_path_buf();
+    let samples_dir = samples_dir.to_path_buf();
+    let app = app.clone();
+    let running = scrape_running.clone();
+
+    tauri::async_runtime::spawn(async move {
+        let to_scrape = {
+            let db_str = db_path.to_str().unwrap();
+            let conn = match db::open(db_str) {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::error!("auto_scrape: db open failed: {}", e);
+                    running.store(false, Ordering::SeqCst);
+                    return;
+                }
+            };
+            match db::get_unscraped_for_auto(&conn) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::error!("auto_scrape: get_unscraped_for_auto failed: {}", e);
+                    running.store(false, Ordering::SeqCst);
+                    return;
+                }
+            }
+        };
+
+        if to_scrape.is_empty() {
+            running.store(false, Ordering::SeqCst);
+            return;
+        }
+
+        tracing::info!("auto_scrape: starting for {} videos", to_scrape.len());
+        let total = to_scrape.len();
+        let pipeline = match scraper::ScrapePipeline::new(thumbnails_dir, actors_dir, samples_dir) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("auto_scrape: pipeline init failed: {}", e);
+                running.store(false, Ordering::SeqCst);
+                return;
+            }
+        };
+
+        cancel_flag.store(false, Ordering::SeqCst);
+
+        for (i, (video_id, code)) in to_scrape.into_iter().enumerate() {
+            if cancel_flag.load(Ordering::SeqCst) {
+                tracing::info!("auto_scrape: cancelled at {}/{}", i + 1, total);
+                break;
+            }
+
+            let result = pipeline.scrape_one(&code, &video_id).await;
+            let db_str = db_path.to_str().unwrap().to_string();
+            let vid_id = video_id.clone();
+            let actor_details: Vec<models::ActorDetail> = result
+                .metadata
+                .actor_details
+                .iter()
+                .map(|a| models::ActorDetail {
+                    name: a.name.clone(),
+                    name_kanji: a.name_kanji.clone(),
+                })
+                .collect();
+            let sample_paths: Vec<String> = result
+                .sample_image_paths
+                .iter()
+                .filter_map(|p| p.to_str().map(|s| s.to_string()))
+                .collect();
+            let actor_photo_map = result.actor_photo_paths.clone();
+            let meta = result.metadata;
+            let cover_path = result.cover_path;
+            let evt_status = result.status.clone();
+            let status = result.status;
+
+            let updated_video = tokio::task::spawn_blocking(move || {
+                let conn = db::open(&db_str)?;
+                db::update_video_metadata(
+                    &conn,
+                    &vid_id,
+                    meta.title.as_deref(),
+                    cover_path.as_ref().and_then(|p| p.to_str()),
+                    meta.series.as_deref(),
+                    meta.duration,
+                    meta.released_at.as_deref(),
+                    &actor_details,
+                    &meta.tags,
+                    meta.maker.as_deref(),
+                    &sample_paths,
+                    status,
+                )?;
+                for (actor_name, photo_path) in &actor_photo_map {
+                    let _ = conn.execute(
+                        "UPDATE actors SET photo_path = ?1 WHERE name = ?2 AND photo_path IS NULL",
+                        rusqlite::params![photo_path.to_str(), actor_name],
+                    );
+                }
+                let video = db::get_video_by_id(&conn, &vid_id).ok();
+                Ok::<Option<Video>, rusqlite::Error>(video)
+            })
+            .await
+            .unwrap_or(Ok(None))
+            .unwrap_or(None);
+
+            // Increment retry_count for transient failures
+            if matches!(evt_status, ScrapeStatus::NotScraped) {
+                let db_str2 = db_path.to_str().unwrap().to_string();
+                let vid_id2 = video_id.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    if let Ok(conn) = db::open(&db_str2) {
+                        let _ = db::increment_retry_count(&conn, &vid_id2);
+                    }
+                })
+                .await;
+            }
+
+            let _ = app.emit(
+                "scrape-progress",
+                ScrapeProgressEvent {
+                    video_id,
+                    status: evt_status,
+                    current: i + 1,
+                    total,
+                    video: updated_video,
+                },
+            );
+        }
+
+        tracing::info!("auto_scrape: complete");
+        let _ = app.emit("scrape-complete", total);
+        running.store(false, Ordering::SeqCst);
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|_app| {
-            let exe_path = std::env::current_exe()
-                .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-            let exe_dir = exe_path.parent()
+            let exe_path =
+                std::env::current_exe().map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+            let exe_dir = exe_path
+                .parent()
                 .ok_or_else(|| "Cannot determine executable directory".to_string())?;
             let data_dir = exe_dir.join("data");
             std::fs::create_dir_all(&data_dir)?;
             let db_path = data_dir.join("library.db");
-            let conn = db::open(db_path.to_str().unwrap())
-                .map_err(|e| e.to_string())?;
-            db::init_db(&conn)
-                .map_err(|e| e.to_string())?;
+            let conn = db::open(db_path.to_str().unwrap()).map_err(|e| e.to_string())?;
+            db::init_db(&conn).map_err(|e| e.to_string())?;
 
             let settings = db::get_settings(&conn).map_err(|e| e.to_string())?;
             if settings.log_enabled {
@@ -454,8 +655,7 @@ pub fn run() {
                 tracing::info!("Logging initialized at level: {}", settings.log_level);
             }
 
-            sync_asset_protocol_scope(_app, &settings, &data_dir)
-                .map_err(|e| e.to_string())?;
+            sync_asset_protocol_scope(_app, &settings, &data_dir).map_err(|e| e.to_string())?;
 
             _app.manage(DataDir(data_dir.clone()));
             _app.manage(DbPath(db_path.clone()));
@@ -473,14 +673,51 @@ pub fn run() {
             _app.manage(SamplesDir(samples_dir));
 
             _app.manage(ScrapeCancel(Arc::new(AtomicBool::new(false))));
+            _app.manage(ScrapeRunning(Arc::new(AtomicBool::new(false))));
 
             // 파일 시스템 워처 시작
             let watcher = watcher::start(
                 _app.handle().clone(),
                 &settings.scan_folders,
                 db_path.clone(),
-            ).map_err(|e| { tracing::warn!("watcher failed to start: {}", e); e }).ok();
+            )
+            .map_err(|e| {
+                tracing::warn!("watcher failed to start: {}", e);
+                e
+            })
+            .ok();
             _app.manage(WatcherHandle(Mutex::new(watcher)));
+
+            // Auto-scrape unscraped videos on startup
+            start_auto_scrape(
+                _app.handle(),
+                &db_path,
+                &_app.state::<ThumbnailsDir>().0,
+                &_app.state::<ActorsDir>().0,
+                &_app.state::<SamplesDir>().0,
+                _app.state::<ScrapeCancel>().0.clone(),
+                _app.state::<ScrapeRunning>().0.clone(),
+            );
+
+            // Listen for watcher auto-scrape requests
+            let app_handle = _app.handle().clone();
+            let db_path2 = db_path.clone();
+            _app.listen("auto-scrape-needed", move |_event| {
+                let thumbnails = app_handle.state::<ThumbnailsDir>().0.clone();
+                let actors = app_handle.state::<ActorsDir>().0.clone();
+                let samples = app_handle.state::<SamplesDir>().0.clone();
+                let cancel = app_handle.state::<ScrapeCancel>().0.clone();
+                let running = app_handle.state::<ScrapeRunning>().0.clone();
+                start_auto_scrape(
+                    &app_handle,
+                    &db_path2,
+                    &thumbnails,
+                    &actors,
+                    &samples,
+                    cancel,
+                    running,
+                );
+            });
 
             Ok(())
         })

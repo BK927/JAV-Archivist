@@ -42,7 +42,13 @@ export default function AppShell() {
         const u3 = await listen<{ current: number; total: number; status: string; video?: Video }>(
           'scrape-progress',
           (e) => {
-            const store = useLibraryStore.getState()
+            let store = useLibraryStore.getState()
+            // Auto-enter progress mode on first event (for auto-scrape)
+            if (store.scrapeMode === 'idle') {
+              store.setScrapeMode('progress')
+              store.setScrapeProgress({ current: 0, total: e.payload.total, success: 0, fail: 0 })
+              store = useLibraryStore.getState()
+            }
             if (store.scrapeMode !== 'progress') return
             const isSuccess = e.payload.status === 'complete' || e.payload.status === 'partial'
             store.updateScrapeProgress((prev) => ({

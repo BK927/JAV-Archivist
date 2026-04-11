@@ -104,6 +104,7 @@ pub fn init_db(conn: &Connection) -> Result<()> {
     let _ = conn.execute("ALTER TABLE actors ADD COLUMN name_kanji TEXT", []);
     let _ = conn.execute("ALTER TABLE videos ADD COLUMN maker_id TEXT", []);
     let _ = conn.execute("ALTER TABLE videos ADD COLUMN series_id TEXT", []);
+    let _ = conn.execute("ALTER TABLE videos ADD COLUMN retry_count INTEGER DEFAULT 0", []);
 
     migrate_series_to_table(conn)?;
 
@@ -742,13 +743,34 @@ pub fn get_videos_to_scrape(conn: &Connection) -> Result<Vec<(String, String)>> 
     Ok(rows)
 }
 
+pub fn get_unscraped_for_auto(conn: &Connection) -> Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, code FROM videos WHERE code != '?' AND scrape_status = 'not_scraped' AND retry_count < 3",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+pub fn increment_retry_count(conn: &Connection, video_id: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE videos SET retry_count = retry_count + 1 WHERE id = ?1",
+        [video_id],
+    )?;
+    Ok(())
+}
+
 pub fn reset_scrape_status(conn: &Connection, video_ids: &[String]) -> Result<()> {
     if video_ids.is_empty() {
         return Ok(());
     }
     let placeholders: Vec<&str> = video_ids.iter().map(|_| "?").collect();
     let sql = format!(
-        "UPDATE videos SET scrape_status = 'not_scraped' WHERE id IN ({})",
+        "UPDATE videos SET scrape_status = 'not_scraped', retry_count = 0 WHERE id IN ({})",
         placeholders.join(",")
     );
     let params: Vec<&dyn rusqlite::types::ToSql> = video_ids
@@ -757,6 +779,35 @@ pub fn reset_scrape_status(conn: &Connection, video_ids: &[String]) -> Result<()
         .collect();
     conn.execute(&sql, params.as_slice())?;
     Ok(())
+}
+
+pub fn delete_videos(conn: &Connection, video_ids: &[String]) -> Result<()> {
+    if video_ids.is_empty() {
+        return Ok(());
+    }
+    let placeholders: Vec<&str> = video_ids.iter().map(|_| "?").collect();
+    let in_clause = placeholders.join(",");
+    let params: Vec<&dyn rusqlite::types::ToSql> = video_ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::types::ToSql)
+        .collect();
+
+    conn.execute_batch("BEGIN")?;
+    let result = (|| -> Result<()> {
+        conn.execute(&format!("DELETE FROM sample_images WHERE video_id IN ({})", in_clause), params.as_slice())?;
+        conn.execute(&format!("DELETE FROM video_tags WHERE video_id IN ({})", in_clause), params.as_slice())?;
+        conn.execute(&format!("DELETE FROM video_actors WHERE video_id IN ({})", in_clause), params.as_slice())?;
+        conn.execute(&format!("DELETE FROM video_files WHERE video_id IN ({})", in_clause), params.as_slice())?;
+        conn.execute(&format!("DELETE FROM videos WHERE id IN ({})", in_clause), params.as_slice())?;
+        Ok(())
+    })();
+
+    if result.is_ok() {
+        conn.execute_batch("COMMIT")?;
+    } else {
+        let _ = conn.execute_batch("ROLLBACK");
+    }
+    result
 }
 
 pub fn set_watched(conn: &Connection, id: &str, watched: bool) -> Result<()> {
@@ -773,6 +824,15 @@ pub fn set_favorite(conn: &Connection, id: &str, favorite: bool) -> Result<()> {
         params![favorite as i32, id],
     )?;
     Ok(())
+}
+
+pub fn get_all_video_ids(conn: &Connection) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare("SELECT id FROM videos")?;
+    let rows = stmt
+        .query_map([], |row| row.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
 }
 
 #[cfg(test)]

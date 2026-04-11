@@ -24,8 +24,7 @@ pub fn start(
 ) -> Result<RecommendedWatcher, String> {
     let (tx, rx) = std::sync::mpsc::channel();
 
-    let mut watcher = RecommendedWatcher::new(tx, Config::default())
-        .map_err(|e| e.to_string())?;
+    let mut watcher = RecommendedWatcher::new(tx, Config::default()).map_err(|e| e.to_string())?;
 
     for folder in folders {
         let path = Path::new(folder);
@@ -40,7 +39,8 @@ pub fn start(
     }
 
     // db_path를 String으로 변환하여 스레드에 전달 (to_str().unwrap() panic 방지)
-    let db_path_str = db_path.to_str()
+    let db_path_str = db_path
+        .to_str()
         .ok_or_else(|| "db_path contains invalid unicode".to_string())?
         .to_string();
 
@@ -80,19 +80,46 @@ pub fn start(
 fn trigger_scan(app: &tauri::AppHandle, db_path: &str) {
     let conn = match db::open(db_path) {
         Ok(c) => c,
-        Err(e) => { tracing::error!("watcher: db open failed: {}", e); return; }
+        Err(e) => {
+            tracing::error!("watcher: db open failed: {}", e);
+            return;
+        }
     };
     let settings = match db::get_settings(&conn) {
         Ok(s) => s,
-        Err(e) => { tracing::error!("watcher: get_settings failed: {}", e); return; }
+        Err(e) => {
+            tracing::error!("watcher: get_settings failed: {}", e);
+            return;
+        }
     };
     let scanned = match scanner::scan_folders(&settings.scan_folders) {
         Ok(v) => v,
-        Err(e) => { tracing::error!("watcher: scan_folders failed: {}", e); return; }
+        Err(e) => {
+            tracing::error!("watcher: scan_folders failed: {}", e);
+            return;
+        }
     };
     if let Err(e) = db::upsert_videos(&conn, &scanned) {
         tracing::error!("watcher: upsert_videos failed: {}", e);
         return;
+    }
+    // Remove orphaned videos (in DB but not on filesystem)
+    let scanned_ids: std::collections::HashSet<String> =
+        scanned.iter().map(|v| v.id.clone()).collect();
+    match db::get_all_video_ids(&conn) {
+        Ok(all_db_ids) => {
+            let orphan_ids: Vec<String> = all_db_ids
+                .into_iter()
+                .filter(|id| !scanned_ids.contains(id))
+                .collect();
+            if !orphan_ids.is_empty() {
+                tracing::info!("watcher: removing {} orphaned videos", orphan_ids.len());
+                if let Err(e) = db::delete_videos(&conn, &orphan_ids) {
+                    tracing::error!("watcher: delete_videos failed: {}", e);
+                }
+            }
+        }
+        Err(e) => tracing::error!("watcher: get_all_video_ids failed: {}", e),
     }
     match db::get_all_videos(&conn) {
         Ok(videos) => {
@@ -101,5 +128,15 @@ fn trigger_scan(app: &tauri::AppHandle, db_path: &str) {
             tracing::info!("watcher: emitted library-changed ({} videos)", count);
         }
         Err(e) => tracing::error!("watcher: get_all_videos failed: {}", e),
+    }
+
+    // Trigger auto-scrape for unscraped videos
+    match db::get_unscraped_for_auto(&conn) {
+        Ok(to_scrape) if !to_scrape.is_empty() => {
+            let ids: Vec<String> = to_scrape.into_iter().map(|(id, _)| id).collect();
+            tracing::info!("watcher: triggering auto-scrape for {} videos", ids.len());
+            let _ = app.emit("auto-scrape-needed", &ids);
+        }
+        _ => {}
     }
 }

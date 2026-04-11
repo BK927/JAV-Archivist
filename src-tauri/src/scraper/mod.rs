@@ -1,19 +1,20 @@
-pub mod types;
-pub mod http;
-pub mod r18dev;
 pub mod fc2;
-pub mod javbus;
-pub mod javten;
+pub mod http;
 pub mod image;
+pub mod javbus;
+pub mod javdb;
+pub mod javten;
+pub mod r18dev;
+pub mod types;
 
 use std::collections::HashMap;
-pub use types::{ScrapedMetadata, ScrapeError, MetadataSource};
+pub use types::{MetadataSource, ScrapeError, ScrapedMetadata};
 
+use crate::models::ScrapeStatus;
+use rquest_util::Emulation;
 use std::path::PathBuf;
 use std::time::Duration;
 use tokio::sync::Mutex;
-use rquest_util::Emulation;
-use crate::models::ScrapeStatus;
 
 pub struct ScrapeResult {
     pub metadata: ScrapedMetadata,
@@ -60,30 +61,52 @@ pub(crate) fn normalize_dmm_actor_url(url: &str) -> Option<String> {
     }
 
     normalize_media_url(trimmed).or_else(|| {
-        (!trimmed.contains('/')).then(|| {
-            format!("https://pics.dmm.co.jp/mono/actjpgs/{}", trimmed)
-        })
+        (!trimmed.contains('/')).then(|| format!("https://pics.dmm.co.jp/mono/actjpgs/{}", trimmed))
     })
 }
 
 fn merge(base: &mut ScrapedMetadata, incoming: ScrapedMetadata) {
-    if base.title.is_none() { base.title = incoming.title; }
-    if base.cover_url.is_none() { base.cover_url = incoming.cover_url; }
-    if base.series.is_none() { base.series = incoming.series; }
-    if base.maker.is_none() { base.maker = incoming.maker; }
-    if base.duration.is_none() { base.duration = incoming.duration; }
-    if base.released_at.is_none() { base.released_at = incoming.released_at; }
-    if base.actors.is_empty() { base.actors = incoming.actors; }
-    if base.actor_details.is_empty() { base.actor_details = incoming.actor_details; }
-    if base.tags.is_empty() { base.tags = incoming.tags; }
-    if base.sample_image_urls.is_empty() { base.sample_image_urls = incoming.sample_image_urls; }
+    if base.title.is_none() {
+        base.title = incoming.title;
+    }
+    if base.cover_url.is_none() {
+        base.cover_url = incoming.cover_url;
+    }
+    if base.series.is_none() {
+        base.series = incoming.series;
+    }
+    if base.maker.is_none() {
+        base.maker = incoming.maker;
+    }
+    if base.duration.is_none() {
+        base.duration = incoming.duration;
+    }
+    if base.released_at.is_none() {
+        base.released_at = incoming.released_at;
+    }
+    if base.actors.is_empty() {
+        base.actors = incoming.actors;
+    }
+    if base.actor_details.is_empty() {
+        base.actor_details = incoming.actor_details;
+    }
+    if base.tags.is_empty() {
+        base.tags = incoming.tags;
+    }
+    if base.sample_image_urls.is_empty() {
+        base.sample_image_urls = incoming.sample_image_urls;
+    }
 }
 
 fn sources_for(code: &str) -> Vec<MetadataSource> {
     if code.starts_with("FC2-PPV") {
         vec![MetadataSource::Fc2, MetadataSource::Javten]
     } else {
-        vec![MetadataSource::R18Dev, MetadataSource::JavBus]
+        vec![
+            MetadataSource::R18Dev,
+            MetadataSource::JavBus,
+            MetadataSource::JavDb,
+        ]
     }
 }
 
@@ -98,6 +121,7 @@ impl MetadataSource {
             Self::Javten => javten::fetch(code, client).await,
             Self::R18Dev => r18dev::fetch(code, client).await,
             Self::JavBus => javbus::fetch(code, client).await,
+            Self::JavDb => javdb::fetch(code, client).await,
         }
     }
 }
@@ -108,23 +132,30 @@ pub struct ScrapePipeline {
     javten_limiter: Mutex<http::RateLimiter>,
     r18dev_limiter: Mutex<http::RateLimiter>,
     javbus_limiter: Mutex<http::RateLimiter>,
+    javdb_limiter: Mutex<http::RateLimiter>,
     thumbnails_dir: PathBuf,
     actors_dir: PathBuf,
     samples_dir: PathBuf,
 }
 
 impl ScrapePipeline {
-    pub fn new(thumbnails_dir: PathBuf, actors_dir: PathBuf, samples_dir: PathBuf) -> Result<Self, String> {
+    pub fn new(
+        thumbnails_dir: PathBuf,
+        actors_dir: PathBuf,
+        samples_dir: PathBuf,
+    ) -> Result<Self, String> {
         let client = rquest::Client::builder()
             .emulation(Emulation::Chrome131)
             .timeout(Duration::from_secs(30))
             .build()
             .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
-        let make_limiter = || Mutex::new(http::RateLimiter::new(
-            Duration::from_secs(3),
-            Duration::from_secs(60),
-        ));
+        let make_limiter = || {
+            Mutex::new(http::RateLimiter::new(
+                Duration::from_secs(3),
+                Duration::from_secs(60),
+            ))
+        };
 
         Ok(Self {
             client,
@@ -132,6 +163,7 @@ impl ScrapePipeline {
             javten_limiter: make_limiter(),
             r18dev_limiter: make_limiter(),
             javbus_limiter: make_limiter(),
+            javdb_limiter: make_limiter(),
             thumbnails_dir,
             actors_dir,
             samples_dir,
@@ -144,6 +176,7 @@ impl ScrapePipeline {
             MetadataSource::Javten => &self.javten_limiter,
             MetadataSource::R18Dev => &self.r18dev_limiter,
             MetadataSource::JavBus => &self.javbus_limiter,
+            MetadataSource::JavDb => &self.javdb_limiter,
         }
     }
 
@@ -178,18 +211,32 @@ impl ScrapePipeline {
         let results = futures::future::join_all(fetch_futures).await;
 
         let mut merged = ScrapedMetadata::default();
-        let mut failed_sources = Vec::new();
+        let mut failed_sources: Vec<(String, String)> = Vec::new();
+        let mut has_transient_error = false;
         for (source, result) in sources.iter().zip(results) {
             match result {
                 Ok(meta) => {
-                    tracing::info!("scrape_one: source={:?} succeeded for code={}", source, code);
+                    tracing::info!(
+                        "scrape_one: source={:?} succeeded for code={}",
+                        source,
+                        code
+                    );
                     merge(&mut merged, meta);
                 }
                 Err(ScrapeError::RateLimited) => {
-                    tracing::warn!("scrape_one: rate limited by source={:?} for code={}", source, code);
+                    tracing::warn!(
+                        "scrape_one: rate limited by source={:?} for code={}",
+                        source,
+                        code
+                    );
+                    has_transient_error = true;
+                }
+                Err(ScrapeError::NotFound) => {
+                    failed_sources.push((format!("{:?}", source), "NotFound".to_string()));
                 }
                 Err(e) => {
                     failed_sources.push((format!("{:?}", source), format!("{:?}", e)));
+                    has_transient_error = true;
                 }
             }
         }
@@ -213,8 +260,13 @@ impl ScrapePipeline {
         for detail in &merged.actor_details {
             if let Some(ref photo_url) = detail.photo_url {
                 if let Ok(path) = image::download_actor_photo(
-                    &self.client, photo_url, &self.actors_dir, &detail.name,
-                ).await {
+                    &self.client,
+                    photo_url,
+                    &self.actors_dir,
+                    &detail.name,
+                )
+                .await
+                {
                     actor_photo_paths.insert(detail.name.clone(), path);
                 }
             }
@@ -226,13 +278,18 @@ impl ScrapePipeline {
             &merged.sample_image_urls,
             &self.samples_dir,
             code,
-        ).await;
+        )
+        .await;
 
         let status = if merged.is_complete(code) {
             ScrapeStatus::Complete
         } else if merged.has_any_field() {
             ScrapeStatus::Partial
+        } else if has_transient_error {
+            // Transient errors (network, parse, rate limit) → keep as NotScraped for auto-retry
+            ScrapeStatus::NotScraped
         } else {
+            // All sources returned NotFound → permanent failure
             ScrapeStatus::NotFound
         };
 
@@ -272,8 +329,8 @@ impl ScrapePipeline {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::types::ScrapedActor;
+    use super::*;
 
     #[test]
     fn test_merge_fills_empty_fields() {
@@ -340,8 +397,9 @@ mod tests {
     #[test]
     fn test_sources_for_general() {
         let sources = sources_for("ABC-123");
-        assert_eq!(sources.len(), 2);
+        assert_eq!(sources.len(), 3);
         assert_eq!(sources[0].name(), "r18dev");
         assert_eq!(sources[1].name(), "javbus");
+        assert_eq!(sources[2].name(), "javdb");
     }
 }
