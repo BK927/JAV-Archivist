@@ -730,18 +730,7 @@ pub fn update_video_metadata(
     result
 }
 
-pub fn get_videos_to_scrape(conn: &Connection) -> Result<Vec<(String, String)>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, code FROM videos WHERE code != '?' AND scrape_status = 'not_scraped'",
-    )?;
-    let rows = stmt
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
-    Ok(rows)
-}
+
 
 pub fn get_unscraped_for_auto(conn: &Connection) -> Result<Vec<(String, String)>> {
     let mut stmt = conn.prepare(
@@ -1138,20 +1127,6 @@ mod tests {
         assert_eq!(v.title, "Original Title");
         assert_eq!(v.scrape_status, ScrapeStatus::Partial);
         assert_eq!(v.tags, vec!["Tag X"]);
-    }
-
-    #[test]
-    fn test_get_videos_to_scrape() {
-        let conn = open_in_memory().unwrap();
-        init_db(&conn).unwrap();
-
-        let v1 = make_test_video("ABC-123", "Video 1", "C:/v1.mp4");
-        let v2 = make_test_video("?", "Unknown", "C:/unknown.mp4");
-        upsert_videos(&conn, &[v1, v2]).unwrap();
-
-        let to_scrape = get_videos_to_scrape(&conn).unwrap();
-        assert_eq!(to_scrape.len(), 1);
-        assert_eq!(to_scrape[0].1, "ABC-123");
     }
 
     #[test]
