@@ -3,7 +3,7 @@ import { usePlayerStore } from '../playerStore'
 import { MOCK_VIDEOS } from '@/lib/mockData'
 
 beforeEach(() => {
-  usePlayerStore.setState({ currentVideo: null, isPreviewOpen: false })
+  usePlayerStore.setState({ currentVideo: null })
 })
 
 describe('playerStore', () => {
@@ -16,10 +16,5 @@ describe('playerStore', () => {
     usePlayerStore.getState().setCurrentVideo(MOCK_VIDEOS[0])
     usePlayerStore.getState().setCurrentVideo(null)
     expect(usePlayerStore.getState().currentVideo).toBeNull()
-  })
-
-  it('setPreviewOpen이 프리뷰 상태를 토글한다', () => {
-    usePlayerStore.getState().setPreviewOpen(true)
-    expect(usePlayerStore.getState().isPreviewOpen).toBe(true)
   })
 })
