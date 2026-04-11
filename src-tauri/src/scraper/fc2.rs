@@ -1,5 +1,5 @@
+use super::types::{ScrapeError, ScrapedMetadata};
 use scraper::{Html, Selector};
-use super::types::{ScrapedMetadata, ScrapeError};
 
 /// Extract numeric ID from "FC2-PPV-1234567"
 fn extract_fc2_id(code: &str) -> Option<&str> {
@@ -22,17 +22,15 @@ pub(crate) fn parse_fc2_html(html: &str) -> Result<ScrapedMetadata, ScrapeError>
                 meta.cover_url = value["image"]["url"]
                     .as_str()
                     .or_else(|| value["image"].as_str())
-                    .and_then(|s| super::normalize_media_url_with_base(s, "https://adult.contents.fc2.com"));
+                    .and_then(|s| {
+                        super::normalize_media_url_with_base(s, "https://adult.contents.fc2.com")
+                    });
             }
 
             // Extract seller username from brand.url: ".../users/testuser/" → "testuser"
             if meta.maker.is_none() {
                 if let Some(brand_url) = value["brand"]["url"].as_str() {
-                    if let Some(username) = brand_url
-                        .trim_end_matches('/')
-                        .rsplit('/')
-                        .next()
-                    {
+                    if let Some(username) = brand_url.trim_end_matches('/').rsplit('/').next() {
                         if !username.is_empty() {
                             meta.maker = Some(username.to_string());
                         }
@@ -70,7 +68,9 @@ pub(crate) fn parse_fc2_html(html: &str) -> Result<ScrapedMetadata, ScrapeError>
             .select(&og_image_sel)
             .next()
             .and_then(|el| el.value().attr("content"))
-            .and_then(|s| super::normalize_media_url_with_base(s, "https://adult.contents.fc2.com"));
+            .and_then(|s| {
+                super::normalize_media_url_with_base(s, "https://adult.contents.fc2.com")
+            });
     }
 
     // 2. Parse tags from data-tag attributes
@@ -100,7 +100,9 @@ pub(crate) fn parse_fc2_html(html: &str) -> Result<ScrapedMetadata, ScrapeError>
     let sample_sel = Selector::parse(".items_article_SampleImagesArea img[src]").unwrap();
     for el in document.select(&sample_sel) {
         if let Some(src) = el.value().attr("src") {
-            if let Some(url) = super::normalize_media_url_with_base(src, "https://adult.contents.fc2.com") {
+            if let Some(url) =
+                super::normalize_media_url_with_base(src, "https://adult.contents.fc2.com")
+            {
                 meta.sample_image_urls.push(url);
             }
         }
@@ -109,7 +111,9 @@ pub(crate) fn parse_fc2_html(html: &str) -> Result<ScrapedMetadata, ScrapeError>
     let gallery_sel = Selector::parse("a[data-fancybox='gallery'][href]").unwrap();
     for el in document.select(&gallery_sel) {
         if let Some(href) = el.value().attr("href") {
-            if let Some(url) = super::normalize_media_url_with_base(href, "https://adult.contents.fc2.com") {
+            if let Some(url) =
+                super::normalize_media_url_with_base(href, "https://adult.contents.fc2.com")
+            {
                 if !meta.sample_image_urls.contains(&url) {
                     meta.sample_image_urls.push(url);
                 }
@@ -118,7 +122,9 @@ pub(crate) fn parse_fc2_html(html: &str) -> Result<ScrapedMetadata, ScrapeError>
     }
 
     if !meta.has_any_field() {
-        return Err(ScrapeError::ParseError("no metadata found in HTML".to_string()));
+        return Err(ScrapeError::ParseError(
+            "no metadata found in HTML".to_string(),
+        ));
     }
 
     Ok(meta)
@@ -155,13 +161,21 @@ pub async fn fetch(code: &str, client: &rquest::Client) -> Result<ScrapedMetadat
 
     // Short body likely means blocked or error page
     if body.len() < 1000 {
-        tracing::warn!("fc2: response body too short ({} bytes), likely blocked for code={}", body.len(), code);
+        tracing::warn!(
+            "fc2: response body too short ({} bytes), likely blocked for code={}",
+            body.len(),
+            code
+        );
         return Err(ScrapeError::RateLimited);
     }
 
     match parse_fc2_html(&body) {
         Ok(meta) => {
-            tracing::debug!("fc2: parsed metadata for code={} title={:?}", code, meta.title);
+            tracing::debug!(
+                "fc2: parsed metadata for code={} title={:?}",
+                code,
+                meta.title
+            );
             Ok(meta)
         }
         Err(e) => {
@@ -197,8 +211,14 @@ mod tests {
         assert!(meta.actors.is_empty()); // FC2 doesn't provide actors
         assert!(meta.duration.is_none()); // FC2 doesn't provide duration
         assert_eq!(meta.sample_image_urls.len(), 2);
-        assert_eq!(meta.sample_image_urls[0], "https://storage200000.contents.fc2.com/file/123/sample1.jpg");
-        assert_eq!(meta.sample_image_urls[1], "https://storage200000.contents.fc2.com/file/123/sample2.jpg");
+        assert_eq!(
+            meta.sample_image_urls[0],
+            "https://storage200000.contents.fc2.com/file/123/sample1.jpg"
+        );
+        assert_eq!(
+            meta.sample_image_urls[1],
+            "https://storage200000.contents.fc2.com/file/123/sample2.jpg"
+        );
     }
 
     #[test]

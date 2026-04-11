@@ -1,9 +1,15 @@
-use std::path::{Path, PathBuf};
 use super::types::ScrapeError;
+use std::path::{Path, PathBuf};
 
 fn sanitize_filename(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' || c == ' ' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect::<String>()
         .trim()
         .to_string()
@@ -24,10 +30,15 @@ pub async fn download_cover(
         .map_err(|e| ScrapeError::NetworkError(e.to_string()))?;
 
     if !resp.status().is_success() {
-        tracing::error!("image: cover download failed HTTP {} for video_id={}", resp.status().as_u16(), video_id);
-        return Err(ScrapeError::NetworkError(
-            format!("HTTP {}", resp.status().as_u16()),
-        ));
+        tracing::error!(
+            "image: cover download failed HTTP {} for video_id={}",
+            resp.status().as_u16(),
+            video_id
+        );
+        return Err(ScrapeError::NetworkError(format!(
+            "HTTP {}",
+            resp.status().as_u16()
+        )));
     }
 
     // Determine extension from Content-Type, URL, or default to jpg
@@ -56,8 +67,7 @@ pub async fn download_cover(
         .await
         .map_err(|e| ScrapeError::NetworkError(e.to_string()))?;
 
-    std::fs::write(&file_path, &bytes)
-        .map_err(|e| ScrapeError::NetworkError(e.to_string()))?;
+    std::fs::write(&file_path, &bytes).map_err(|e| ScrapeError::NetworkError(e.to_string()))?;
 
     tracing::info!("image: cover saved to {:?}", file_path);
     Ok(file_path)
@@ -69,7 +79,11 @@ pub async fn download_actor_photo(
     actors_dir: &Path,
     actor_name: &str,
 ) -> Result<PathBuf, ScrapeError> {
-    tracing::debug!("image: downloading actor photo for {:?} url={}", actor_name, url);
+    tracing::debug!(
+        "image: downloading actor photo for {:?} url={}",
+        actor_name,
+        url
+    );
     let resp = client
         .get(url)
         .send()
@@ -77,8 +91,15 @@ pub async fn download_actor_photo(
         .map_err(|e| ScrapeError::NetworkError(e.to_string()))?;
 
     if !resp.status().is_success() {
-        tracing::warn!("image: actor photo download failed HTTP {} for {:?}", resp.status().as_u16(), actor_name);
-        return Err(ScrapeError::NetworkError(format!("HTTP {}", resp.status().as_u16())));
+        tracing::warn!(
+            "image: actor photo download failed HTTP {} for {:?}",
+            resp.status().as_u16(),
+            actor_name
+        );
+        return Err(ScrapeError::NetworkError(format!(
+            "HTTP {}",
+            resp.status().as_u16()
+        )));
     }
 
     let ext = resp
@@ -96,7 +117,10 @@ pub async fn download_actor_photo(
     let sanitized = sanitize_filename(actor_name);
     let file_path = actors_dir.join(format!("{}.{}", sanitized, ext));
 
-    let bytes = resp.bytes().await.map_err(|e| ScrapeError::NetworkError(e.to_string()))?;
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| ScrapeError::NetworkError(e.to_string()))?;
     std::fs::write(&file_path, &bytes).map_err(|e| ScrapeError::NetworkError(e.to_string()))?;
 
     tracing::debug!("image: actor photo saved to {:?}", file_path);
@@ -112,16 +136,30 @@ pub async fn download_sample_images(
     let mut paths = Vec::new();
     let sanitized_code = video_code.replace('-', "_").to_lowercase();
 
-    tracing::info!("image: downloading {} sample images for code={}", urls.len(), video_code);
+    tracing::info!(
+        "image: downloading {} sample images for code={}",
+        urls.len(),
+        video_code
+    );
     for (i, url) in urls.iter().enumerate() {
         let resp = match client.get(url).send().await {
             Ok(r) if r.status().is_success() => r,
             Ok(r) => {
-                tracing::warn!("image: sample #{} HTTP {} for code={}", i + 1, r.status().as_u16(), video_code);
+                tracing::warn!(
+                    "image: sample #{} HTTP {} for code={}",
+                    i + 1,
+                    r.status().as_u16(),
+                    video_code
+                );
                 continue;
             }
             Err(e) => {
-                tracing::warn!("image: sample #{} fetch error for code={}: {}", i + 1, video_code, e);
+                tracing::warn!(
+                    "image: sample #{} fetch error for code={}: {}",
+                    i + 1,
+                    video_code,
+                    e
+                );
                 continue;
             }
         };
@@ -147,7 +185,12 @@ pub async fn download_sample_images(
         }
     }
 
-    tracing::info!("image: saved {}/{} sample images for code={}", paths.len(), urls.len(), video_code);
+    tracing::info!(
+        "image: saved {}/{} sample images for code={}",
+        paths.len(),
+        urls.len(),
+        video_code
+    );
     paths
 }
 
