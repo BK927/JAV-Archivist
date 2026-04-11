@@ -138,6 +138,44 @@ fn open_with_player(db: tauri::State<'_, DbPath>, file_path: String) -> Result<(
 }
 
 #[tauri::command]
+fn open_folder(file_path: String) -> Result<(), String> {
+    tracing::info!("cmd: open_folder path={}", file_path);
+    let path = std::path::Path::new(&file_path);
+    if !path.exists() {
+        return Err(format!("File not found: {}", file_path));
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg("/select,")
+            .arg(&file_path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&file_path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let parent = path.parent().unwrap_or(path);
+        std::process::Command::new("xdg-open")
+            .arg(parent)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
 fn mark_watched(db: tauri::State<'_, DbPath>, id: String, watched: bool) -> Result<(), String> {
     tracing::info!("cmd: mark_watched id={} watched={}", id, watched);
     let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
@@ -739,6 +777,7 @@ pub fn run() {
             get_videos,
             get_video,
             open_with_player,
+            open_folder,
             mark_watched,
             toggle_favorite,
             get_settings,
