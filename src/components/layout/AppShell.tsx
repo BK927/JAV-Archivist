@@ -43,6 +43,11 @@ export default function AppShell() {
           'scrape-progress',
           (e) => {
             const store = useLibraryStore.getState()
+            // Auto-enter progress mode on first event (for auto-scrape)
+            if (store.scrapeMode === 'idle') {
+              store.setScrapeMode('progress')
+              store.setScrapeProgress({ current: 0, total: e.payload.total, success: 0, fail: 0 })
+            }
             if (store.scrapeMode !== 'progress') return
             const isSuccess = e.payload.status === 'complete' || e.payload.status === 'partial'
             store.updateScrapeProgress((prev) => ({
