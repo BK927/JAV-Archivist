@@ -93,6 +93,20 @@ fn scan_library(db: tauri::State<'_, DbPath>) -> Result<Vec<Video>, String> {
     let settings = db::get_settings(&conn).map_err(|e| e.to_string())?;
     let scanned = scanner::scan_folders(&settings.scan_folders)?;
     db::upsert_videos(&conn, &scanned).map_err(|e| e.to_string())?;
+
+    // Remove orphaned videos (in DB but not on filesystem)
+    let scanned_ids: std::collections::HashSet<String> =
+        scanned.iter().map(|v| v.id.clone()).collect();
+    let all_db_ids = db::get_all_video_ids(&conn).map_err(|e| e.to_string())?;
+    let orphan_ids: Vec<String> = all_db_ids
+        .into_iter()
+        .filter(|id| !scanned_ids.contains(id))
+        .collect();
+    if !orphan_ids.is_empty() {
+        tracing::info!("scan_library: removing {} orphaned videos", orphan_ids.len());
+        db::delete_videos(&conn, &orphan_ids).map_err(|e| e.to_string())?;
+    }
+
     db::get_all_videos(&conn).map_err(|e| e.to_string())
 }
 
