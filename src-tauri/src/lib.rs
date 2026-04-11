@@ -25,6 +25,7 @@ struct ThumbnailsDir(PathBuf);
 struct ActorsDir(PathBuf);
 struct SamplesDir(PathBuf);
 struct ScrapeCancel(Arc<AtomicBool>);
+struct ScrapeRunning(Arc<AtomicBool>);
 struct WatcherHandle(Mutex<Option<RecommendedWatcher>>);
 
 #[derive(Clone, serde::Serialize)]
@@ -322,10 +323,14 @@ async fn scrape_videos(
     actors_state: tauri::State<'_, ActorsDir>,
     samples_state: tauri::State<'_, SamplesDir>,
     cancel: tauri::State<'_, ScrapeCancel>,
+    scrape_running: tauri::State<'_, ScrapeRunning>,
     app: tauri::AppHandle,
     video_ids: Vec<String>,
 ) -> Result<(), String> {
     tracing::info!("cmd: scrape_videos count={}", video_ids.len());
+    // Mark scrape as running; prevents concurrent auto-scrape
+    scrape_running.0.store(true, Ordering::SeqCst);
+    let running_flag = scrape_running.0.clone();
     let db_path = db.0.clone();
     let thumbnails_dir = thumbnails.0.clone();
     let actors_dir = actors_state.0.clone();
@@ -443,6 +448,7 @@ async fn scrape_videos(
 
     tracing::info!("scrape_videos: complete, processed {}", total);
     let _ = app.emit("scrape-complete", total);
+    running_flag.store(false, Ordering::SeqCst);
     Ok(())
 }
 
@@ -484,12 +490,19 @@ fn reset_data(
     Ok(())
 }
 
-fn start_auto_scrape(app: &tauri::AppHandle, db_path: &std::path::Path, thumbnails_dir: &std::path::Path, actors_dir: &std::path::Path, samples_dir: &std::path::Path, cancel_flag: Arc<AtomicBool>) {
+fn start_auto_scrape(app: &tauri::AppHandle, db_path: &std::path::Path, thumbnails_dir: &std::path::Path, actors_dir: &std::path::Path, samples_dir: &std::path::Path, cancel_flag: Arc<AtomicBool>, scrape_running: Arc<AtomicBool>) {
+    // Skip if a scrape (manual or auto) is already running
+    if scrape_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        tracing::info!("auto_scrape: skipped, scrape already in progress");
+        return;
+    }
+
     let db_path = db_path.to_path_buf();
     let thumbnails_dir = thumbnails_dir.to_path_buf();
     let actors_dir = actors_dir.to_path_buf();
     let samples_dir = samples_dir.to_path_buf();
     let app = app.clone();
+    let running = scrape_running.clone();
 
     tauri::async_runtime::spawn(async move {
         let to_scrape = {
@@ -498,6 +511,7 @@ fn start_auto_scrape(app: &tauri::AppHandle, db_path: &std::path::Path, thumbnai
                 Ok(c) => c,
                 Err(e) => {
                     tracing::error!("auto_scrape: db open failed: {}", e);
+                    running.store(false, Ordering::SeqCst);
                     return;
                 }
             };
@@ -505,12 +519,14 @@ fn start_auto_scrape(app: &tauri::AppHandle, db_path: &std::path::Path, thumbnai
                 Ok(v) => v,
                 Err(e) => {
                     tracing::error!("auto_scrape: get_unscraped_for_auto failed: {}", e);
+                    running.store(false, Ordering::SeqCst);
                     return;
                 }
             }
         };
 
         if to_scrape.is_empty() {
+            running.store(false, Ordering::SeqCst);
             return;
         }
 
@@ -520,6 +536,7 @@ fn start_auto_scrape(app: &tauri::AppHandle, db_path: &std::path::Path, thumbnai
             Ok(p) => p,
             Err(e) => {
                 tracing::error!("auto_scrape: pipeline init failed: {}", e);
+                running.store(false, Ordering::SeqCst);
                 return;
             }
         };
@@ -610,6 +627,7 @@ fn start_auto_scrape(app: &tauri::AppHandle, db_path: &std::path::Path, thumbnai
 
         tracing::info!("auto_scrape: complete");
         let _ = app.emit("scrape-complete", total);
+        running.store(false, Ordering::SeqCst);
     });
 }
 
@@ -655,6 +673,7 @@ pub fn run() {
             _app.manage(SamplesDir(samples_dir));
 
             _app.manage(ScrapeCancel(Arc::new(AtomicBool::new(false))));
+            _app.manage(ScrapeRunning(Arc::new(AtomicBool::new(false))));
 
             // 파일 시스템 워처 시작
             let watcher = watcher::start(
@@ -677,6 +696,7 @@ pub fn run() {
                 &_app.state::<ActorsDir>().0,
                 &_app.state::<SamplesDir>().0,
                 _app.state::<ScrapeCancel>().0.clone(),
+                _app.state::<ScrapeRunning>().0.clone(),
             );
 
             // Listen for watcher auto-scrape requests
@@ -687,6 +707,7 @@ pub fn run() {
                 let actors = app_handle.state::<ActorsDir>().0.clone();
                 let samples = app_handle.state::<SamplesDir>().0.clone();
                 let cancel = app_handle.state::<ScrapeCancel>().0.clone();
+                let running = app_handle.state::<ScrapeRunning>().0.clone();
                 start_auto_scrape(
                     &app_handle,
                     &db_path2,
@@ -694,6 +715,7 @@ pub fn run() {
                     &actors,
                     &samples,
                     cancel,
+                    running,
                 );
             });
 
