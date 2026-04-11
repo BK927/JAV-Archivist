@@ -105,7 +105,7 @@ export default function CinemaPlayer({
     const video = videoRef.current
     if (!video) return
     video.load()
-    video.play()
+    video.play().catch(() => {})
   }, [currentPart])
 
   // Auto-advance on ended
