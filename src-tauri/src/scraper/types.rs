@@ -77,6 +77,7 @@ pub enum MetadataSource {
     Javten,
     R18Dev,
     JavBus,
+    JavDb,
 }
 
 impl MetadataSource {
@@ -87,6 +88,7 @@ impl MetadataSource {
             Self::Javten => "javten",
             Self::R18Dev => "r18dev",
             Self::JavBus => "javbus",
+            Self::JavDb => "javdb",
         }
     }
 }
