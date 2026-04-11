@@ -129,4 +129,14 @@ fn trigger_scan(app: &tauri::AppHandle, db_path: &str) {
         }
         Err(e) => tracing::error!("watcher: get_all_videos failed: {}", e),
     }
+
+    // Trigger auto-scrape for unscraped videos
+    match db::get_unscraped_for_auto(&conn) {
+        Ok(to_scrape) if !to_scrape.is_empty() => {
+            let ids: Vec<String> = to_scrape.into_iter().map(|(id, _)| id).collect();
+            tracing::info!("watcher: triggering auto-scrape for {} videos", ids.len());
+            let _ = app.emit("auto-scrape-needed", &ids);
+        }
+        _ => {}
+    }
 }
