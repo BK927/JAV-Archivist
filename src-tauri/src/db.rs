@@ -6,7 +6,9 @@ use rusqlite::{params, Connection, Result};
 use uuid::Uuid;
 
 pub fn open(path: &str) -> Result<Connection> {
-    Connection::open(path)
+    let conn = Connection::open(path)?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))?;
+    Ok(conn)
 }
 
 #[cfg(test)]
@@ -815,10 +817,11 @@ pub fn set_favorite(conn: &Connection, id: &str, favorite: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn get_all_video_ids(conn: &Connection) -> Result<Vec<String>> {
-    let mut stmt = conn.prepare("SELECT id FROM videos")?;
+/// Returns (id, code) pairs for all videos in the database.
+pub fn get_all_video_id_codes(conn: &Connection) -> Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare("SELECT id, code FROM videos")?;
     let rows = stmt
-        .query_map([], |row| row.get(0))?
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
         .filter_map(|r| r.ok())
         .collect();
     Ok(rows)

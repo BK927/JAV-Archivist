@@ -97,12 +97,15 @@ fn scan_library(db: tauri::State<'_, DbPath>) -> Result<Vec<Video>, String> {
     db::upsert_videos(&conn, &scanned).map_err(|e| e.to_string())?;
 
     // Remove orphaned videos (in DB but not on filesystem)
-    let scanned_ids: std::collections::HashSet<String> =
-        scanned.iter().map(|v| v.id.clone()).collect();
-    let all_db_ids = db::get_all_video_ids(&conn).map_err(|e| e.to_string())?;
-    let orphan_ids: Vec<String> = all_db_ids
+    // Compare by CODE (stable) — scanner generates new UUIDs each run,
+    // so comparing by ID would incorrectly flag all videos as orphans.
+    let scanned_codes: std::collections::HashSet<String> =
+        scanned.iter().map(|v| v.code.clone()).collect();
+    let all_db = db::get_all_video_id_codes(&conn).map_err(|e| e.to_string())?;
+    let orphan_ids: Vec<String> = all_db
         .into_iter()
-        .filter(|id| !scanned_ids.contains(id))
+        .filter(|(_, code)| !scanned_codes.contains(code))
+        .map(|(id, _)| id)
         .collect();
     if !orphan_ids.is_empty() {
         tracing::info!("scan_library: removing {} orphaned videos", orphan_ids.len());
@@ -572,6 +575,7 @@ fn start_auto_scrape(app: &tauri::AppHandle, db_path: &std::path::Path, thumbnai
             let evt_status = result.status.clone();
             let status = result.status;
 
+            let vid_id_log = video_id.clone();
             let updated_video = tokio::task::spawn_blocking(move || {
                 let conn = db::open(&db_str)?;
                 db::update_video_metadata(
@@ -597,9 +601,18 @@ fn start_auto_scrape(app: &tauri::AppHandle, db_path: &std::path::Path, thumbnai
                 let video = db::get_video_by_id(&conn, &vid_id).ok();
                 Ok::<Option<Video>, rusqlite::Error>(video)
             })
-            .await
-            .unwrap_or(Ok(None))
-            .unwrap_or(None);
+            .await;
+            let updated_video = match &updated_video {
+                Ok(Ok(v)) => v.clone(),
+                Ok(Err(e)) => {
+                    tracing::error!("auto_scrape: [{}] DB error: {}", vid_id_log, e);
+                    None
+                }
+                Err(e) => {
+                    tracing::error!("auto_scrape: [{}] spawn_blocking panic: {}", vid_id_log, e);
+                    None
+                }
+            };
 
             // Increment retry_count for transient failures
             if matches!(evt_status, ScrapeStatus::NotScraped) {

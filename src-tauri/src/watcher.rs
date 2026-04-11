@@ -104,13 +104,15 @@ fn trigger_scan(app: &tauri::AppHandle, db_path: &str) {
         return;
     }
     // Remove orphaned videos (in DB but not on filesystem)
-    let scanned_ids: std::collections::HashSet<String> =
-        scanned.iter().map(|v| v.id.clone()).collect();
-    match db::get_all_video_ids(&conn) {
-        Ok(all_db_ids) => {
-            let orphan_ids: Vec<String> = all_db_ids
+    // Compare by CODE (stable) — scanner generates new UUIDs each run.
+    let scanned_codes: std::collections::HashSet<String> =
+        scanned.iter().map(|v| v.code.clone()).collect();
+    match db::get_all_video_id_codes(&conn) {
+        Ok(all_db) => {
+            let orphan_ids: Vec<String> = all_db
                 .into_iter()
-                .filter(|id| !scanned_ids.contains(id))
+                .filter(|(_, code)| !scanned_codes.contains(code))
+                .map(|(id, _)| id)
                 .collect();
             if !orphan_ids.is_empty() {
                 tracing::info!("watcher: removing {} orphaned videos", orphan_ids.len());
@@ -119,7 +121,7 @@ fn trigger_scan(app: &tauri::AppHandle, db_path: &str) {
                 }
             }
         }
-        Err(e) => tracing::error!("watcher: get_all_video_ids failed: {}", e),
+        Err(e) => tracing::error!("watcher: get_all_video_id_codes failed: {}", e),
     }
     match db::get_all_videos(&conn) {
         Ok(videos) => {
