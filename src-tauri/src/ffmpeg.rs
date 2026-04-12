@@ -188,7 +188,7 @@ pub fn generate_sprite_sheet(
 }
 
 /// Get image dimensions (width, height) by reading JPEG header.
-fn image_dimensions(path: &Path) -> Option<(u32, u32)> {
+pub fn image_dimensions(path: &Path) -> Option<(u32, u32)> {
     let data = std::fs::read(path).ok()?;
     let mut i = 0;
     while i + 1 < data.len() {
@@ -216,4 +216,63 @@ fn image_dimensions(path: &Path) -> Option<(u32, u32)> {
         }
     }
     None
+}
+
+/// Check if an image is low quality based on resolution and bits-per-pixel.
+/// Returns true if width < 800px OR bpp < 0.1.
+pub fn is_low_quality_image(path: &Path) -> bool {
+    let (width, height) = match image_dimensions(path) {
+        Some(dims) => dims,
+        None => return true, // can't read → treat as low quality
+    };
+
+    if width < 800 {
+        return true;
+    }
+
+    // Check bits per pixel (bpp = file_size_bytes / pixel_count)
+    if let Ok(meta) = std::fs::metadata(path) {
+        let pixels = (width as u64) * (height as u64);
+        if pixels > 0 {
+            let bpp = meta.len() as f64 / pixels as f64;
+            if bpp < 0.1 {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+/// Extract N evenly-spaced frames from a video as JPEG sample images.
+/// Returns the paths of successfully extracted frames.
+pub fn extract_sample_images(
+    ffmpeg_path: &Path,
+    ffprobe_path: &Path,
+    file_path: &str,
+    video_id: &str,
+    samples_dir: &Path,
+    count: u32,
+) -> Vec<String> {
+    let duration = match get_duration(ffprobe_path, file_path) {
+        Some(d) if d > 0.0 => d,
+        _ => return Vec::new(),
+    };
+
+    let mut paths = Vec::new();
+    for i in 0..count {
+        // Evenly distribute: skip first and last 5% to avoid black frames
+        let pct = 0.05 + (0.90 * (i as f64 + 0.5) / count as f64);
+        let timestamp = duration * pct;
+        let filename = format!("{}_sample_{:02}.jpg", video_id, i + 1);
+        let output_path = samples_dir.join(&filename);
+
+        if extract_frame(ffmpeg_path, file_path, timestamp, &output_path)
+            && !is_black_frame(&output_path)
+        {
+            paths.push(output_path.to_string_lossy().to_string());
+        }
+    }
+
+    paths
 }
