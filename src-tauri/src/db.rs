@@ -865,16 +865,17 @@ pub fn assign_code(conn: &Connection, video_id: &str, new_code: &str) -> Result<
         .ok();
 
     if let Some(target_id) = existing_id {
-        // Merge: move files from old video to existing one
-        conn.execute(
+        // Merge in a transaction to avoid inconsistent state on partial failure
+        let tx = conn.unchecked_transaction()?;
+        tx.execute(
             "UPDATE video_files SET video_id = ?1 WHERE video_id = ?2",
             params![target_id, video_id],
         )?;
-        // Delete the old video record
-        conn.execute("DELETE FROM video_tags WHERE video_id = ?1", [video_id])?;
-        conn.execute("DELETE FROM video_actors WHERE video_id = ?1", [video_id])?;
-        conn.execute("DELETE FROM sample_images WHERE video_id = ?1", [video_id])?;
-        conn.execute("DELETE FROM videos WHERE id = ?1", [video_id])?;
+        tx.execute("DELETE FROM video_tags WHERE video_id = ?1", [video_id])?;
+        tx.execute("DELETE FROM video_actors WHERE video_id = ?1", [video_id])?;
+        tx.execute("DELETE FROM sample_images WHERE video_id = ?1", [video_id])?;
+        tx.execute("DELETE FROM videos WHERE id = ?1", [video_id])?;
+        tx.commit()?;
         Ok(target_id)
     } else {
         // No collision: update code and reset scrape status
