@@ -25,7 +25,7 @@ export default function ScrapeProgressBar() {
   if (scrapeMode === 'progress') {
     const pct = scrapeProgress.total > 0 ? (scrapeProgress.current / scrapeProgress.total) * 100 : 0
     return (
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-card border border-border rounded-lg shadow-xl px-4 py-3 flex items-center gap-3 z-50 min-w-[400px]">
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-card border border-border rounded-lg shadow-xl px-4 py-3 flex items-center gap-3 z-40 min-w-[400px]">
         <span className="text-sm font-semibold text-primary whitespace-nowrap">수집 중...</span>
         <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
           <div
@@ -47,7 +47,7 @@ export default function ScrapeProgressBar() {
 
   if (scrapeMode === 'result') {
     return (
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-green-950 border border-green-800 rounded-lg shadow-xl px-4 py-3 flex items-center gap-3 z-50 min-w-[300px]">
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-green-950 border border-green-800 rounded-lg shadow-xl px-4 py-3 flex items-center gap-3 z-40 min-w-[300px]">
         <span className="text-sm font-semibold text-green-400">수집 완료</span>
         <span className="text-xs text-green-400">✓ 성공 {scrapeProgress.success}</span>
         {scrapeProgress.fail > 0 && (
