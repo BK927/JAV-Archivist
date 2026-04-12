@@ -30,8 +30,6 @@ struct ScrapeCancel(Arc<AtomicBool>);
 struct ScrapeRunning(Arc<AtomicBool>);
 struct SampleExtractionRunning(Arc<AtomicBool>);
 struct WatcherHandle(Mutex<Option<RecommendedWatcher>>);
-struct FfmpegPath(Option<PathBuf>);
-struct FfprobePath(Option<PathBuf>);
 struct SpritesDir(PathBuf);
 
 #[derive(Clone, serde::Serialize)]
@@ -99,8 +97,6 @@ fn scan_library(
     app: tauri::AppHandle,
     db: tauri::State<'_, DbPath>,
     thumbnails: tauri::State<'_, ThumbnailsDir>,
-    ffmpeg_state: tauri::State<'_, FfmpegPath>,
-    ffprobe_state: tauri::State<'_, FfprobePath>,
 ) -> Result<ScanResult, String> {
     tracing::info!("cmd: scan_library");
     let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
@@ -126,16 +122,14 @@ fn scan_library(
     }
 
     // Generate thumbnails for videos without one
-    if let (Some(ffmpeg), Some(ffprobe)) = (&ffmpeg_state.0, &ffprobe_state.0) {
-        let need_thumbs = db::get_videos_without_thumbnail(&conn).map_err(|e| e.to_string())?;
-        if !need_thumbs.is_empty() {
-            tracing::info!("scan_library: generating thumbnails for {} videos", need_thumbs.len());
-        }
-        for (video_id, file_path) in &need_thumbs {
-            if let Some(thumb_path) = ffmpeg::extract_thumbnail(ffmpeg, ffprobe, file_path, video_id, &thumbnails.0) {
-                let _ = db::set_thumbnail_path(&conn, video_id, &thumb_path);
-                tracing::info!("scan_library: thumbnail generated for {}", video_id);
-            }
+    let need_thumbs = db::get_videos_without_thumbnail(&conn).map_err(|e| e.to_string())?;
+    if !need_thumbs.is_empty() {
+        tracing::info!("scan_library: generating thumbnails for {} videos", need_thumbs.len());
+    }
+    for (video_id, file_path) in &need_thumbs {
+        if let Some(thumb_path) = ffmpeg::extract_thumbnail(file_path, video_id, &thumbnails.0) {
+            let _ = db::set_thumbnail_path(&conn, video_id, &thumb_path);
+            tracing::info!("scan_library: thumbnail generated for {}", video_id);
         }
     }
 
@@ -567,23 +561,14 @@ fn reset_data(
 }
 
 #[tauri::command]
-fn check_ffmpeg(ffmpeg_path: tauri::State<'_, FfmpegPath>) -> bool {
-    ffmpeg::check(&ffmpeg_path.0)
-}
-
-#[tauri::command]
 fn get_or_generate_sprite(
-    ffmpeg_state: tauri::State<'_, FfmpegPath>,
-    ffprobe_state: tauri::State<'_, FfprobePath>,
     sprites: tauri::State<'_, SpritesDir>,
     video_id: String,
     file_path: String,
     part_index: u32,
 ) -> Option<models::SpriteInfo> {
     tracing::info!("cmd: get_or_generate_sprite video_id={} part={}", video_id, part_index);
-    let ffmpeg = ffmpeg_state.0.as_ref()?;
-    let ffprobe = ffprobe_state.0.as_ref()?;
-    ffmpeg::generate_sprite_sheet(ffmpeg, ffprobe, &file_path, &video_id, part_index, &sprites.0)
+    ffmpeg::generate_sprite_sheet(&file_path, &video_id, part_index, &sprites.0)
 }
 
 #[tauri::command]
@@ -602,17 +587,11 @@ fn assign_code(
 fn generate_local_samples(
     db: tauri::State<'_, DbPath>,
     samples: tauri::State<'_, SamplesDir>,
-    ffmpeg_state: tauri::State<'_, FfmpegPath>,
-    ffprobe_state: tauri::State<'_, FfprobePath>,
     video_id: String,
 ) -> Result<Vec<SampleImage>, String> {
     tracing::info!("cmd: generate_local_samples video_id={}", video_id);
-    let (Some(ffmpeg), Some(ffprobe)) = (&ffmpeg_state.0, &ffprobe_state.0) else {
-        return Err("FFmpeg not available".to_string());
-    };
     let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
 
-    // Get first file path for this video
     let file_path: String = conn
         .query_row(
             "SELECT path FROM video_files WHERE video_id = ?1 ORDER BY rowid LIMIT 1",
@@ -621,7 +600,7 @@ fn generate_local_samples(
         )
         .map_err(|e| e.to_string())?;
 
-    let paths = ffmpeg::extract_sample_images(ffmpeg, ffprobe, &file_path, &video_id, &samples.0, 8);
+    let paths = ffmpeg::extract_sample_images(&file_path, &video_id, &samples.0, 8);
     if !paths.is_empty() {
         db::save_local_sample_images(&conn, &video_id, &paths).map_err(|e| e.to_string())?;
     }
@@ -783,8 +762,6 @@ fn start_auto_scrape(app: &tauri::AppHandle, db_path: &std::path::Path, thumbnai
 fn start_local_sample_extraction(
     db_path: &std::path::Path,
     samples_dir: &std::path::Path,
-    ffmpeg_path: &Option<PathBuf>,
-    ffprobe_path: &Option<PathBuf>,
     running: Arc<AtomicBool>,
 ) {
     if running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
@@ -792,10 +769,6 @@ fn start_local_sample_extraction(
         return;
     }
 
-    let (Some(ffmpeg), Some(ffprobe)) = (ffmpeg_path.clone(), ffprobe_path.clone()) else {
-        running.store(false, Ordering::SeqCst);
-        return;
-    };
     let db_path = db_path.to_path_buf();
     let samples_dir = samples_dir.to_path_buf();
 
@@ -881,14 +854,12 @@ fn start_local_sample_extraction(
         let mut handles = Vec::new();
         for (video_id, file_path) in all_targets {
             let permit = sem.clone().acquire_owned().await.unwrap();
-            let ffmpeg = ffmpeg.clone();
-            let ffprobe = ffprobe.clone();
             let samples = samples_dir.clone();
             let db = db_path.clone();
 
             let handle = tokio::task::spawn_blocking(move || {
                 let paths = ffmpeg::extract_sample_images(
-                    &ffmpeg, &ffprobe, &file_path, &video_id, &samples, 8,
+                    &file_path, &video_id, &samples, 8,
                 );
                 if !paths.is_empty() {
                     if let Ok(conn) = db::open(db.to_str().unwrap()) {
@@ -955,16 +926,6 @@ pub fn run() {
             std::fs::create_dir_all(&sprites_dir)?;
             _app.manage(SpritesDir(sprites_dir));
 
-            let ffmpeg_path = ffmpeg::resolve_binary("ffmpeg");
-            let ffprobe_path = ffmpeg::resolve_binary("ffprobe");
-            if ffmpeg_path.is_some() {
-                tracing::info!("FFmpeg found: {:?}", ffmpeg_path.as_ref().unwrap());
-            } else {
-                tracing::warn!("FFmpeg not found — thumbnail/sprite generation will be disabled");
-            }
-            _app.manage(FfmpegPath(ffmpeg_path));
-            _app.manage(FfprobePath(ffprobe_path));
-
             _app.manage(ScrapeCancel(Arc::new(AtomicBool::new(false))));
             _app.manage(ScrapeRunning(Arc::new(AtomicBool::new(false))));
             _app.manage(SampleExtractionRunning(Arc::new(AtomicBool::new(false))));
@@ -1017,8 +978,6 @@ pub fn run() {
             start_local_sample_extraction(
                 &db_path,
                 &_app.state::<SamplesDir>().0,
-                &_app.state::<FfmpegPath>().0,
-                &_app.state::<FfprobePath>().0,
                 _app.state::<SampleExtractionRunning>().0.clone(),
             );
 
@@ -1029,8 +988,6 @@ pub fn run() {
                 start_local_sample_extraction(
                     &db_path3,
                     &app_handle2.state::<SamplesDir>().0,
-                    &app_handle2.state::<FfmpegPath>().0,
-                    &app_handle2.state::<FfprobePath>().0,
                     app_handle2.state::<SampleExtractionRunning>().0.clone(),
                 );
             });
@@ -1058,7 +1015,6 @@ pub fn run() {
             get_tag_cooccurrence,
             get_makers,
             get_sample_images,
-            check_ffmpeg,
             assign_code,
             get_or_generate_sprite,
             generate_local_samples,
