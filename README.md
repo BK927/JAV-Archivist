@@ -1,96 +1,98 @@
 # JAV Archivist
 
-JAV 영상 컬렉션을 관리하는 Windows 데스크탑 앱입니다. 폴더를 스캔해 영상을 자동으로 등록하고, 온라인에서 메타데이터를 긁어와 라이브러리를 채워줍니다.
+A Windows desktop app for managing your JAV video collection. Scans folders to automatically register videos and fetches metadata from online sources to populate your library.
+
+**Read this in other languages:** [한국어](README.ko.md) · [日本語](README.ja.md) · [中文](README.zh.md)
 
 ---
 
-## 주요 기능
+## Features
 
-- **라이브러리 스캔** — 지정한 폴더를 재귀적으로 탐색해 영상 파일을 자동 등록
-- **메타데이터 스크래핑** — 품번 기반으로 제목, 배우, 시리즈, 메이커, 태그를 자동으로 수집
-- **썸네일 / 샘플 이미지** — Windows Media Foundation으로 프레임 추출, 외부 프로그램 불필요
-- **스프라이트 시크바** — 동영상 플레이어 내 시크바 미리보기
-- **필터 & 검색** — 배우 / 시리즈 / 메이커 / 태그 / 즐겨찾기 / 시청 여부 등 다양한 필터
-- **배우 · 시리즈 · 태그 관리** — 별도 페이지에서 메타데이터 탐색
-- **즐겨찾기 / 시청 기록** — 영상별로 상태 추적
-- **로그** — 앱 동작 내역을 실시간으로 확인 (설정에서 활성화)
-
----
-
-## 시스템 요구사항
-
-| 항목 | 내용 |
-|------|------|
-| 운영체제 | Windows 10 / 11 (64비트) |
-| 외부 프로그램 | 없음 (FFmpeg 불필요) |
-| 화면 해상도 | 1024 × 640 이상 |
+- **Library Scan** — Recursively scans specified folders and automatically registers video files
+- **Metadata Scraping** — Fetches title, cast, series, maker, and tags automatically based on video code
+- **Thumbnails / Sample Images** — Extracts frames using Windows Media Foundation — no external tools required
+- **Sprite Seekbar** — Seekbar preview thumbnails inside the video player
+- **Filter & Search** — Filter by cast, series, maker, tags, favorites, watch status, and more
+- **Cast · Series · Tag Management** — Browse metadata from dedicated pages
+- **Favorites / Watch History** — Track status per video
+- **Logs** — View app activity in real time (enable in Settings)
 
 ---
 
-## 설치
+## System Requirements
 
-> **릴리스 빌드가 없는 경우** 아래 [직접 빌드](#직접-빌드) 섹션을 참고하세요.
-
-릴리스 페이지에서 `.msi` 또는 `.exe` 설치 파일을 받아 실행하세요.
-
----
-
-## 처음 시작하기
-
-1. **설정 → 스캔 폴더** — 영상이 저장된 폴더를 추가합니다.
-2. **라이브러리 → 스캔** — 폴더를 스캔해 영상을 등록합니다.
-3. **스크래핑** — 등록된 영상을 선택하거나 일괄 스크래핑을 실행해 메타데이터를 채웁니다.
-4. **탐색** — 배우 / 시리즈 / 태그 등으로 필터링하며 컬렉션을 관리합니다.
+| Item | Requirement |
+|------|-------------|
+| OS | Windows 10 / 11 (64-bit) |
+| External Programs | None (no FFmpeg needed) |
+| Display | 1024 × 640 or higher |
 
 ---
 
-## 화면 구성
+## Installation
 
-| 탭 | 설명 |
-|----|------|
-| 라이브러리 | 그리드 뷰로 영상 목록 탐색, 검색 및 필터 |
-| 배우 | 등록된 배우 목록, 배우별 영상 필터 |
-| 시리즈 | 시리즈별 영상 그룹 |
-| 태그 | 태그 목록 및 연관 태그 분석 |
-| 메이커 | 제작사별 영상 필터 |
-| 설정 | 스캔 폴더, 스크래핑 옵션, 로그 설정 |
-| 로그 | 앱 이벤트 실시간 확인 (설정에서 활성화 필요) |
+> **No release build yet?** See the [Build from Source](#build-from-source) section below.
+
+Download the `.msi` or `.exe` installer from the Releases page and run it.
 
 ---
 
-## 직접 빌드
+## Getting Started
 
-### 사전 준비
+1. **Settings → Scan Folders** — Add the folders where your videos are stored.
+2. **Library → Scan** — Scan the folders to register videos.
+3. **Scrape** — Select videos or run a batch scrape to fill in metadata.
+4. **Browse** — Filter by cast, series, tags, and more to manage your collection.
 
-- [Node.js](https://nodejs.org/) 18 이상
+---
+
+## Pages
+
+| Tab | Description |
+|-----|-------------|
+| Library | Browse videos in a grid view with search and filters |
+| Cast | Browse registered cast members, filter videos by cast |
+| Series | Group videos by series |
+| Tags | Tag list and co-occurrence analysis |
+| Makers | Filter videos by production company |
+| Settings | Scan folders, scraping options, log settings |
+| Logs | View app events in real time (requires enabling in Settings) |
+
+---
+
+## Build from Source
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) 18 or later
 - [pnpm](https://pnpm.io/) (`npm install -g pnpm`)
 - [Rust](https://www.rust-lang.org/tools/install)
-- [Tauri CLI 전제 조건](https://tauri.app/start/prerequisites/) (Visual Studio C++ 빌드 도구 포함)
+- [Tauri prerequisites](https://tauri.app/start/prerequisites/) (includes Visual Studio C++ Build Tools)
 
-### 빌드
+### Build
 
 ```bash
-# 의존성 설치
+# Install dependencies
 pnpm install
 
-# 개발 모드 실행
+# Run in development mode
 pnpm tauri dev
 
-# 배포용 빌드 (src-tauri/target/release/bundle/ 에 생성)
+# Production build (output in src-tauri/target/release/bundle/)
 pnpm tauri build
 ```
 
 ---
 
-## 기술 스택
+## Tech Stack
 
-- **프론트엔드** — React 19, TypeScript, Vite, TailwindCSS, Zustand
-- **백엔드** — Rust, Tauri 2, SQLite (rusqlite)
-- **미디어 처리** — Windows Media Foundation (썸네일 · 프레임 추출)
-- **스크래핑** — rquest, scraper
+- **Frontend** — React 19, TypeScript, Vite, TailwindCSS, Zustand
+- **Backend** — Rust, Tauri 2, SQLite (rusqlite)
+- **Media Processing** — Windows Media Foundation (thumbnails & frame extraction)
+- **Scraping** — rquest, scraper
 
 ---
 
-## 라이선스
+## License
 
-이 프로젝트는 개인 용도로 제작되었습니다.
+This project is for personal use.
