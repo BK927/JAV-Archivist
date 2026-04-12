@@ -9,7 +9,8 @@ import {
   SkipBack,
   SkipForward,
 } from 'lucide-react'
-import { formatTime } from '@/lib/utils'
+import { formatTime, assetUrl } from '@/lib/utils'
+import type { SpriteInfo } from '@/types'
 
 interface PlayerControlsProps {
   videoRef: React.RefObject<HTMLVideoElement | null>
@@ -23,6 +24,7 @@ interface PlayerControlsProps {
   onPlayPause?: () => void
   onSkip?: (delta: number) => void
   onMuteToggle?: () => void
+  spriteInfo?: SpriteInfo | null
 }
 
 export const SPEEDS = [0.5, 1, 1.5, 2]
@@ -39,6 +41,7 @@ export default function PlayerControls({
   onPlayPause,
   onSkip,
   onMuteToggle,
+  spriteInfo,
 }: PlayerControlsProps) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -256,10 +259,32 @@ export default function PlayerControls({
         </div>
         {hoverTime && (
           <div
-            className="absolute -top-6 -translate-x-1/2 bg-black/80 text-white text-xs font-mono px-2 py-1 rounded pointer-events-none"
-            style={{ left: hoverTime.left }}
+            className="absolute -translate-x-1/2 pointer-events-none flex flex-col items-center"
+            style={{ left: hoverTime.left, bottom: '100%', marginBottom: 4 }}
           >
-            {formatTime(hoverTime.time)}
+            {spriteInfo && (
+              <div
+                className="border border-white/20 rounded overflow-hidden mb-1"
+                style={{
+                  width: spriteInfo.width,
+                  height: spriteInfo.height,
+                  backgroundImage: `url(${assetUrl(spriteInfo.url)})`,
+                  backgroundPosition: (() => {
+                    const frameIndex = Math.min(
+                      Math.floor(hoverTime.time / spriteInfo.interval),
+                      spriteInfo.totalFrames - 1
+                    )
+                    const col = frameIndex % spriteInfo.columns
+                    const row = Math.floor(frameIndex / spriteInfo.columns)
+                    return `-${col * spriteInfo.width}px -${row * spriteInfo.height}px`
+                  })(),
+                  backgroundSize: `${spriteInfo.columns * spriteInfo.width}px ${spriteInfo.rows * spriteInfo.height}px`,
+                }}
+              />
+            )}
+            <span className="bg-black/80 text-white text-xs font-mono px-2 py-1 rounded">
+              {formatTime(hoverTime.time)}
+            </span>
           </div>
         )}
       </div>

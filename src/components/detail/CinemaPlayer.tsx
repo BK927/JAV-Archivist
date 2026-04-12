@@ -1,9 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { ArrowLeft } from 'lucide-react'
+import { invoke } from '@tauri-apps/api/core'
 import PlayerControls, { SPEEDS } from './PlayerControls'
 import PartSelector from './PartSelector'
 import { assetUrl } from '@/lib/utils'
-import type { VideoFile } from '@/types'
+import type { VideoFile, SpriteInfo } from '@/types'
 import ActionFeedback, { type FeedbackAction } from './ActionFeedback'
 
 interface CinemaPlayerProps {
@@ -35,6 +36,7 @@ export default function CinemaPlayer({
   const [feedbackKey, setFeedbackKey] = useState(0)
   const [seekDelta, setSeekDelta] = useState<number | null>(null)
   const [seekDeltaKey, setSeekDeltaKey] = useState(0)
+  const [spriteInfo, setSpriteInfo] = useState<SpriteInfo | null>(null)
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mouseOverControlsRef = useRef(false)
 
@@ -163,6 +165,23 @@ export default function CinemaPlayer({
     video.load()
     video.play().catch(() => {})
   }, [currentPart])
+
+  // Fetch sprite sheet for seek bar preview
+  useEffect(() => {
+    setSpriteInfo(null)
+    const file = files[currentPart]
+    if (!file) return
+
+    invoke<SpriteInfo | null>('get_or_generate_sprite', {
+      videoId: videoCode,
+      filePath: file.path,
+      partIndex: currentPart,
+    }).then((info) => {
+      setSpriteInfo(info ?? null)
+    }).catch(() => {
+      // FFmpeg not available or generation failed — no sprite preview
+    })
+  }, [currentPart, files, videoCode])
 
   // Auto-advance on ended
   useEffect(() => {
@@ -349,6 +368,7 @@ export default function CinemaPlayer({
             const video = videoRef.current
             if (video) triggerFeedback({ type: video.muted ? 'mute' : 'unmute' })
           }}
+          spriteInfo={spriteInfo}
         />
       </div>
     </div>

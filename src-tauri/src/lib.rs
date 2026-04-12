@@ -560,6 +560,21 @@ fn check_ffmpeg(ffmpeg_path: tauri::State<'_, FfmpegPath>) -> bool {
 }
 
 #[tauri::command]
+fn get_or_generate_sprite(
+    ffmpeg_state: tauri::State<'_, FfmpegPath>,
+    ffprobe_state: tauri::State<'_, FfprobePath>,
+    sprites: tauri::State<'_, SpritesDir>,
+    video_id: String,
+    file_path: String,
+    part_index: u32,
+) -> Option<models::SpriteInfo> {
+    tracing::info!("cmd: get_or_generate_sprite video_id={} part={}", video_id, part_index);
+    let ffmpeg = ffmpeg_state.0.as_ref()?;
+    let ffprobe = ffprobe_state.0.as_ref()?;
+    ffmpeg::generate_sprite_sheet(ffmpeg, ffprobe, &file_path, &video_id, part_index, &sprites.0)
+}
+
+#[tauri::command]
 fn assign_code(
     db: tauri::State<'_, DbPath>,
     video_id: String,
@@ -849,6 +864,7 @@ pub fn run() {
             get_sample_images,
             check_ffmpeg,
             assign_code,
+            get_or_generate_sprite,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
