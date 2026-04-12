@@ -17,6 +17,7 @@ interface LibraryStore {
   isScanning: boolean
   selectionMode: boolean
   selectedIds: Set<string>
+  newVideoIds: Set<string>
   allTags: Tag[]
   scrapeMode: ScrapeMode
   scrapeProgress: ScrapeProgress
@@ -28,6 +29,7 @@ interface LibraryStore {
   toggleSelected: (id: string) => void
   selectAll: (ids: string[]) => void
   clearSelection: () => void
+  addNewVideoIds: (ids: string[]) => void
   setAllTags: (tags: Tag[]) => void
   setScrapeMode: (mode: ScrapeMode) => void
   setScrapeProgress: (p: ScrapeProgress) => void
@@ -51,6 +53,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   isScanning: false,
   selectionMode: false,
   selectedIds: new Set(),
+  newVideoIds: new Set(),
   allTags: [],
   scrapeMode: 'idle',
   scrapeProgress: { current: 0, total: 0, success: 0, fail: 0 },
@@ -69,6 +72,12 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
   selectAll: (ids) => set({ selectedIds: new Set(ids) }),
   clearSelection: () => set({ selectedIds: new Set() }),
+  addNewVideoIds: (ids) => {
+    if (ids.length === 0) return
+    const next = new Set(get().newVideoIds)
+    ids.forEach((id) => next.add(id))
+    set({ newVideoIds: next })
+  },
   setAllTags: (allTags) => set({ allTags }),
   setScrapeMode: (scrapeMode) => set({ scrapeMode }),
   setScrapeProgress: (scrapeProgress) => set({ scrapeProgress }),

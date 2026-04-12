@@ -36,7 +36,7 @@ export interface SpriteInfo {
 
 export interface ScanResult {
   videos: Video[]
-  added: number
+  added: string[]
   removed: number
 }
 

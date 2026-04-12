@@ -3,6 +3,7 @@ import { Badge } from '@/components/ui/badge'
 import { Play, Star } from 'lucide-react'
 import { isUnidentified, displayCode, type Video } from '@/types'
 import { cn, assetUrl } from '@/lib/utils'
+import { useLibraryStore } from '@/stores/libraryStore'
 
 interface VideoCardProps {
   video: Video
@@ -17,6 +18,7 @@ export default function VideoCard({ video, onClick, selectionMode, selected, onT
   const [hovered, setHovered] = useState(false)
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const didLongPress = useRef(false)
+  const isNew = useLibraryStore((s) => s.newVideoIds.has(video.id))
 
   const handleClick = () => {
     if (didLongPress.current) return
@@ -109,6 +111,16 @@ export default function VideoCard({ video, onClick, selectionMode, selected, onT
             selectionMode ? 'left-8' : 'left-1.5'
           )}>
             미식별
+          </span>
+        )}
+
+        {isNew && (
+          <span className={cn(
+            'absolute z-2 bg-emerald-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold',
+            isUnidentified(video) ? 'top-14' : 'top-8',
+            selectionMode ? 'left-8' : 'left-1.5'
+          )}>
+            NEW
           </span>
         )}
 

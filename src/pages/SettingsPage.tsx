@@ -50,11 +50,14 @@ export default function SettingsPage() {
 
   const handleRescan = async () => {
     setScanning(true)
-    const result = await run<ScanResult>('scan_library', {}, { videos: [], added: 0, removed: 0 })
+    const result = await run<ScanResult>('scan_library', {}, { videos: [], added: [], removed: 0 })
     useLibraryStore.getState().setVideos(result.videos)
+    if (result.added.length > 0) {
+      useLibraryStore.getState().addNewVideoIds(result.added)
+    }
     setScanning(false)
     const parts: string[] = []
-    if (result.added > 0) parts.push(`${result.added}개 추가`)
+    if (result.added.length > 0) parts.push(`${result.added.length}개 추가`)
     if (result.removed > 0) parts.push(`${result.removed}개 제거`)
     if (parts.length > 0) toast(parts.join(' · '))
   }
