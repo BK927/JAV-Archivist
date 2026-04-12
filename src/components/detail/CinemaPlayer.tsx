@@ -193,11 +193,12 @@ export default function CinemaPlayer({
           }
           break
       }
+      showControls()
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [toggleFullscreen, onExit])
+  }, [toggleFullscreen, onExit, showControls])
 
   const partLabel =
     files.length > 1
@@ -215,7 +216,6 @@ export default function CinemaPlayer({
         ref={videoRef}
         className="w-full h-full object-contain"
         src={assetUrl(files[currentPart].path)}
-        autoPlay
         onClick={handleVideoClick}
       />
 
