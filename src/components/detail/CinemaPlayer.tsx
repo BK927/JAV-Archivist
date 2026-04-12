@@ -1,9 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { ArrowLeft } from 'lucide-react'
-import PlayerControls from './PlayerControls'
+import PlayerControls, { SPEEDS } from './PlayerControls'
 import PartSelector from './PartSelector'
 import { assetUrl } from '@/lib/utils'
 import type { VideoFile } from '@/types'
+import ActionFeedback, { type FeedbackAction } from './ActionFeedback'
 
 interface CinemaPlayerProps {
   files: VideoFile[]
@@ -30,9 +31,24 @@ export default function CinemaPlayer({
   const [controlsVisible, setControlsVisible] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [speedIndex, setSpeedIndex] = useState(1)
-  const [seekDelta] = useState<number | null>(null)
-  const [seekDeltaKey] = useState(0)
+  const [feedback, setFeedback] = useState<FeedbackAction | null>(null)
+  const [feedbackKey, setFeedbackKey] = useState(0)
+  const [seekDelta, setSeekDelta] = useState<number | null>(null)
+  const [seekDeltaKey, setSeekDeltaKey] = useState(0)
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const mouseOverControlsRef = useRef(false)
+
+  // --- Feedback helpers ---
+
+  const triggerFeedback = useCallback((action: FeedbackAction) => {
+    setFeedback(action)
+    setFeedbackKey((k) => k + 1)
+  }, [])
+
+  const triggerSeekDelta = useCallback((delta: number) => {
+    setSeekDelta(delta)
+    setSeekDeltaKey((k) => k + 1)
+  }, [])
 
   // --- Auto-hide controls ---
 
@@ -85,17 +101,54 @@ export default function CinemaPlayer({
     scheduleHide()
   }, [scheduleHide])
 
-  // --- Video click to toggle play/pause ---
+  // --- Fullscreen ---
 
-  const handleVideoClick = useCallback(() => {
-    const video = videoRef.current
-    if (!video) return
-    if (video.paused) {
-      video.play()
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen()
     } else {
-      video.pause()
+      containerRef.current?.requestFullscreen()
     }
   }, [])
+
+  // --- Video click to toggle play/pause (double-click for fullscreen) ---
+
+  const handleVideoClick = useCallback(() => {
+    if (clickTimerRef.current) {
+      // Second click within 200ms — double click
+      clearTimeout(clickTimerRef.current)
+      clickTimerRef.current = null
+      toggleFullscreen()
+      return
+    }
+    clickTimerRef.current = setTimeout(() => {
+      clickTimerRef.current = null
+      const video = videoRef.current
+      if (!video) return
+      if (video.paused) {
+        video.play().catch(() => {})
+        triggerFeedback({ type: 'play' })
+      } else {
+        video.pause()
+        triggerFeedback({ type: 'pause' })
+      }
+    }, 200)
+  }, [toggleFullscreen, triggerFeedback])
+
+  // --- Scroll wheel volume ---
+
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      e.preventDefault()
+      const video = videoRef.current
+      if (!video) return
+      const delta = e.deltaY < 0 ? 0.05 : -0.05
+      video.volume = Math.max(0, Math.min(1, video.volume + delta))
+      if (video.volume > 0 && video.muted) video.muted = false
+      triggerFeedback({ type: 'volume', value: Math.round(video.volume * 100) })
+    },
+    [triggerFeedback],
+  )
 
   // --- Part navigation ---
 
@@ -126,16 +179,6 @@ export default function CinemaPlayer({
     return () => video.removeEventListener('ended', onEnded)
   }, [currentPart, files.length])
 
-  // --- Fullscreen ---
-
-  const toggleFullscreen = useCallback(() => {
-    if (document.fullscreenElement) {
-      document.exitFullscreen()
-    } else {
-      containerRef.current?.requestFullscreen()
-    }
-  }, [])
-
   useEffect(() => {
     const onFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement)
@@ -156,29 +199,33 @@ export default function CinemaPlayer({
         case ' ':
           e.preventDefault()
           if (video.paused) {
-            video.play()
+            video.play().catch(() => {})
+            triggerFeedback({ type: 'play' })
           } else {
             video.pause()
+            triggerFeedback({ type: 'pause' })
           }
           break
         case 'ArrowLeft':
           e.preventDefault()
           video.currentTime = Math.max(0, video.currentTime - 10)
+          triggerSeekDelta(-10)
           break
         case 'ArrowRight':
           e.preventDefault()
-          video.currentTime = Math.min(
-            video.duration || 0,
-            video.currentTime + 10,
-          )
+          video.currentTime = Math.min(video.duration || 0, video.currentTime + 10)
+          triggerSeekDelta(10)
           break
         case 'ArrowUp':
           e.preventDefault()
           video.volume = Math.min(1, video.volume + 0.1)
+          if (video.muted) video.muted = false
+          triggerFeedback({ type: 'volume', value: Math.round(video.volume * 100) })
           break
         case 'ArrowDown':
           e.preventDefault()
           video.volume = Math.max(0, video.volume - 0.1)
+          triggerFeedback({ type: 'volume', value: Math.round(video.volume * 100) })
           break
         case 'f':
         case 'F':
@@ -187,6 +234,23 @@ export default function CinemaPlayer({
         case 'm':
         case 'M':
           video.muted = !video.muted
+          triggerFeedback({ type: video.muted ? 'mute' : 'unmute' })
+          break
+        case ',':
+          if (speedIndex > 0) {
+            const newIndex = speedIndex - 1
+            video.playbackRate = SPEEDS[newIndex]
+            setSpeedIndex(newIndex)
+            triggerFeedback({ type: 'speed', value: SPEEDS[newIndex] })
+          }
+          break
+        case '.':
+          if (speedIndex < SPEEDS.length - 1) {
+            const newIndex = speedIndex + 1
+            video.playbackRate = SPEEDS[newIndex]
+            setSpeedIndex(newIndex)
+            triggerFeedback({ type: 'speed', value: SPEEDS[newIndex] })
+          }
           break
         case 'Escape':
           if (document.fullscreenElement) {
@@ -201,7 +265,14 @@ export default function CinemaPlayer({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [toggleFullscreen, onExit, showControls])
+  }, [toggleFullscreen, onExit, showControls, triggerFeedback, triggerSeekDelta, speedIndex])
+
+  // Cleanup clickTimerRef on unmount
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current)
+    }
+  }, [])
 
   const partLabel =
     files.length > 1
@@ -213,6 +284,7 @@ export default function CinemaPlayer({
       ref={containerRef}
       className="fixed inset-0 z-50 bg-black"
       onMouseMove={handleMouseMove}
+      onWheel={handleWheel}
     >
       {/* Video */}
       <video
@@ -221,6 +293,8 @@ export default function CinemaPlayer({
         src={assetUrl(files[currentPart].path)}
         onClick={handleVideoClick}
       />
+
+      <ActionFeedback action={feedback} triggerKey={feedbackKey} />
 
       {/* Top bar */}
       <div
