@@ -35,6 +35,7 @@ export default function PlayerControls({
   const [duration, setDuration] = useState(0)
   const [volume, setVolume] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
+  const [hoverTime, setHoverTime] = useState<{ time: number; left: number } | null>(null)
   const isSeekingRef = useRef(false)
 
   // Sync state from video element events
@@ -107,6 +108,22 @@ export default function PlayerControls({
     if (video) video.playbackRate = SPEEDS[next]
     onSpeedChange(next)
   }, [videoRef, speedIndex, onSpeedChange])
+
+  const handleSeekHover = useCallback(
+    (e: React.MouseEvent) => {
+      const bar = seekBarRef.current
+      const video = videoRef.current
+      if (!bar || !video || !isFinite(video.duration)) return
+      const rect = bar.getBoundingClientRect()
+      const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+      setHoverTime({ time: ratio * video.duration, left: e.clientX - rect.left })
+    },
+    [videoRef],
+  )
+
+  const handleSeekLeave = useCallback(() => {
+    setHoverTime(null)
+  }, [])
 
   // --- Seek bar drag ---
   const seekBarRef = useRef<HTMLDivElement>(null)
@@ -187,6 +204,8 @@ export default function PlayerControls({
         ref={seekBarRef}
         className="group relative h-1 bg-white/20 rounded-full cursor-pointer mb-3"
         onMouseDown={handleSeekMouseDown}
+        onMouseMove={handleSeekHover}
+        onMouseLeave={handleSeekLeave}
       >
         <div
           className="absolute inset-y-0 left-0 bg-primary rounded-full"
@@ -196,6 +215,14 @@ export default function PlayerControls({
           className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 bg-primary rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
           style={{ left: `${seekPercent}%` }}
         />
+        {hoverTime && (
+          <div
+            className="absolute -top-8 -translate-x-1/2 bg-black/80 text-white text-xs font-mono px-2 py-1 rounded pointer-events-none"
+            style={{ left: hoverTime.left }}
+          >
+            {formatTime(hoverTime.time)}
+          </div>
+        )}
       </div>
 
       {/* Controls row */}
