@@ -27,6 +27,7 @@ struct ActorsDir(PathBuf);
 struct SamplesDir(PathBuf);
 struct ScrapeCancel(Arc<AtomicBool>);
 struct ScrapeRunning(Arc<AtomicBool>);
+struct SampleExtractionRunning(Arc<AtomicBool>);
 struct WatcherHandle(Mutex<Option<RecommendedWatcher>>);
 struct FfmpegPath(Option<PathBuf>);
 struct FfprobePath(Option<PathBuf>);
@@ -94,6 +95,7 @@ fn sync_asset_protocol_scope<R: tauri::Runtime, M: tauri::Manager<R>>(
 
 #[tauri::command]
 fn scan_library(
+    app: tauri::AppHandle,
     db: tauri::State<'_, DbPath>,
     thumbnails: tauri::State<'_, ThumbnailsDir>,
     ffmpeg_state: tauri::State<'_, FfmpegPath>,
@@ -137,6 +139,13 @@ fn scan_library(
     }
 
     let videos = db::get_all_videos(&conn).map_err(|e| e.to_string())?;
+
+    if !added.is_empty() {
+        let _ = app.emit("auto-scrape-needed", ());
+    }
+
+    let _ = app.emit("local-samples-needed", ());
+
     Ok(ScanResult { videos, added, removed })
 }
 
@@ -588,6 +597,37 @@ fn assign_code(
     db::get_video_by_id(&conn, &final_id).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn generate_local_samples(
+    db: tauri::State<'_, DbPath>,
+    samples: tauri::State<'_, SamplesDir>,
+    ffmpeg_state: tauri::State<'_, FfmpegPath>,
+    ffprobe_state: tauri::State<'_, FfprobePath>,
+    video_id: String,
+) -> Result<Vec<SampleImage>, String> {
+    tracing::info!("cmd: generate_local_samples video_id={}", video_id);
+    let (Some(ffmpeg), Some(ffprobe)) = (&ffmpeg_state.0, &ffprobe_state.0) else {
+        return Err("FFmpeg not available".to_string());
+    };
+    let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
+
+    // Get first file path for this video
+    let file_path: String = conn
+        .query_row(
+            "SELECT path FROM video_files WHERE video_id = ?1 ORDER BY rowid LIMIT 1",
+            [&video_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    let paths = ffmpeg::extract_sample_images(ffmpeg, ffprobe, &file_path, &video_id, &samples.0, 8);
+    if !paths.is_empty() {
+        db::save_local_sample_images(&conn, &video_id, &paths).map_err(|e| e.to_string())?;
+    }
+
+    db::get_sample_images(&conn, &video_id).map_err(|e| e.to_string())
+}
+
 fn start_auto_scrape(app: &tauri::AppHandle, db_path: &std::path::Path, thumbnails_dir: &std::path::Path, actors_dir: &std::path::Path, samples_dir: &std::path::Path, cancel_flag: Arc<AtomicBool>, scrape_running: Arc<AtomicBool>) {
     // Skip if a scrape (manual or auto) is already running
     if scrape_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
@@ -739,6 +779,136 @@ fn start_auto_scrape(app: &tauri::AppHandle, db_path: &std::path::Path, thumbnai
     });
 }
 
+fn start_local_sample_extraction(
+    db_path: &std::path::Path,
+    samples_dir: &std::path::Path,
+    ffmpeg_path: &Option<PathBuf>,
+    ffprobe_path: &Option<PathBuf>,
+    running: Arc<AtomicBool>,
+) {
+    if running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
+        tracing::info!("local_samples: skipped, extraction already in progress");
+        return;
+    }
+
+    let (Some(ffmpeg), Some(ffprobe)) = (ffmpeg_path.clone(), ffprobe_path.clone()) else {
+        running.store(false, Ordering::SeqCst);
+        return;
+    };
+    let db_path = db_path.to_path_buf();
+    let samples_dir = samples_dir.to_path_buf();
+
+    tauri::async_runtime::spawn(async move {
+        let sem = Arc::new(tokio::sync::Semaphore::new(3));
+
+        // Phase 1: videos with no samples at all
+        let no_samples = {
+            let db_str = db_path.to_str().unwrap();
+            let conn = match db::open(db_str) {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::error!("local_samples: db open failed: {}", e);
+                    running.store(false, Ordering::SeqCst);
+                    return;
+                }
+            };
+            match db::get_videos_needing_samples(&conn) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::error!("local_samples: get_videos_needing_samples failed: {}", e);
+                    running.store(false, Ordering::SeqCst);
+                    return;
+                }
+            }
+        };
+
+        // Phase 2: videos with low-quality samples
+        let low_quality = {
+            let db_str = db_path.to_str().unwrap();
+            let conn = match db::open(db_str) {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::error!("local_samples: db open failed (phase 2): {}", e);
+                    running.store(false, Ordering::SeqCst);
+                    return;
+                }
+            };
+            let all_with_samples: Vec<(String, String)> = conn
+                .prepare(
+                    "SELECT v.id, vf.path FROM videos v
+                     JOIN video_files vf ON vf.video_id = v.id
+                     JOIN sample_images si ON si.video_id = v.id
+                     GROUP BY v.id"
+                )
+                .and_then(|mut stmt| {
+                    stmt.query_map([], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })?.collect()
+                })
+                .unwrap_or_else(|e| {
+                    tracing::error!("local_samples: query all_with_samples failed: {}", e);
+                    Vec::new()
+                });
+
+            let mut result = Vec::new();
+            for (vid, file_path) in all_with_samples {
+                let sample_paths = match db::get_sample_image_paths(&conn, &vid) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::error!("local_samples: get_sample_image_paths failed for {}: {}", vid, e);
+                        Vec::new()
+                    }
+                };
+                let any_low = sample_paths.iter().any(|p| ffmpeg::is_low_quality_image(Path::new(p)));
+                if any_low {
+                    result.push((vid, file_path));
+                }
+            }
+            result
+        };
+
+        let mut all_targets: Vec<(String, String)> = no_samples;
+        all_targets.extend(low_quality);
+
+        if all_targets.is_empty() {
+            running.store(false, Ordering::SeqCst);
+            return;
+        }
+
+        tracing::info!("local_samples: processing {} videos", all_targets.len());
+
+        let mut handles = Vec::new();
+        for (video_id, file_path) in all_targets {
+            let permit = sem.clone().acquire_owned().await.unwrap();
+            let ffmpeg = ffmpeg.clone();
+            let ffprobe = ffprobe.clone();
+            let samples = samples_dir.clone();
+            let db = db_path.clone();
+
+            let handle = tokio::task::spawn_blocking(move || {
+                let paths = ffmpeg::extract_sample_images(
+                    &ffmpeg, &ffprobe, &file_path, &video_id, &samples, 8,
+                );
+                if !paths.is_empty() {
+                    if let Ok(conn) = db::open(db.to_str().unwrap()) {
+                        let _ = db::save_local_sample_images(&conn, &video_id, &paths);
+                        tracing::info!("local_samples: generated {} samples for {}", paths.len(), video_id);
+                    }
+                }
+                drop(permit);
+            });
+            handles.push(handle);
+        }
+
+        for h in handles {
+            let _ = h.await;
+        }
+
+        tracing::info!("local_samples: complete");
+        running.store(false, Ordering::SeqCst);
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -796,6 +966,7 @@ pub fn run() {
 
             _app.manage(ScrapeCancel(Arc::new(AtomicBool::new(false))));
             _app.manage(ScrapeRunning(Arc::new(AtomicBool::new(false))));
+            _app.manage(SampleExtractionRunning(Arc::new(AtomicBool::new(false))));
 
             // 파일 시스템 워처 시작
             let watcher = watcher::start(
@@ -841,6 +1012,28 @@ pub fn run() {
                 );
             });
 
+            // Local sample extraction on startup
+            start_local_sample_extraction(
+                &db_path,
+                &_app.state::<SamplesDir>().0,
+                &_app.state::<FfmpegPath>().0,
+                &_app.state::<FfprobePath>().0,
+                _app.state::<SampleExtractionRunning>().0.clone(),
+            );
+
+            // Listen for local sample extraction requests (after scan)
+            let app_handle2 = _app.handle().clone();
+            let db_path3 = db_path.clone();
+            _app.listen("local-samples-needed", move |_event| {
+                start_local_sample_extraction(
+                    &db_path3,
+                    &app_handle2.state::<SamplesDir>().0,
+                    &app_handle2.state::<FfmpegPath>().0,
+                    &app_handle2.state::<FfprobePath>().0,
+                    app_handle2.state::<SampleExtractionRunning>().0.clone(),
+                );
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -867,6 +1060,7 @@ pub fn run() {
             check_ffmpeg,
             assign_code,
             get_or_generate_sprite,
+            generate_local_samples,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
