@@ -1,7 +1,96 @@
-# Tauri + React + Typescript
+# JAV Archivist
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+JAV 영상 컬렉션을 관리하는 Windows 데스크탑 앱입니다. 폴더를 스캔해 영상을 자동으로 등록하고, 온라인에서 메타데이터를 긁어와 라이브러리를 채워줍니다.
 
-## Recommended IDE Setup
+---
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+## 주요 기능
+
+- **라이브러리 스캔** — 지정한 폴더를 재귀적으로 탐색해 영상 파일을 자동 등록
+- **메타데이터 스크래핑** — 품번 기반으로 제목, 배우, 시리즈, 메이커, 태그를 자동으로 수집
+- **썸네일 / 샘플 이미지** — Windows Media Foundation으로 프레임 추출, 외부 프로그램 불필요
+- **스프라이트 시크바** — 동영상 플레이어 내 시크바 미리보기
+- **필터 & 검색** — 배우 / 시리즈 / 메이커 / 태그 / 즐겨찾기 / 시청 여부 등 다양한 필터
+- **배우 · 시리즈 · 태그 관리** — 별도 페이지에서 메타데이터 탐색
+- **즐겨찾기 / 시청 기록** — 영상별로 상태 추적
+- **로그** — 앱 동작 내역을 실시간으로 확인 (설정에서 활성화)
+
+---
+
+## 시스템 요구사항
+
+| 항목 | 내용 |
+|------|------|
+| 운영체제 | Windows 10 / 11 (64비트) |
+| 외부 프로그램 | 없음 (FFmpeg 불필요) |
+| 화면 해상도 | 1024 × 640 이상 |
+
+---
+
+## 설치
+
+> **릴리스 빌드가 없는 경우** 아래 [직접 빌드](#직접-빌드) 섹션을 참고하세요.
+
+릴리스 페이지에서 `.msi` 또는 `.exe` 설치 파일을 받아 실행하세요.
+
+---
+
+## 처음 시작하기
+
+1. **설정 → 스캔 폴더** — 영상이 저장된 폴더를 추가합니다.
+2. **라이브러리 → 스캔** — 폴더를 스캔해 영상을 등록합니다.
+3. **스크래핑** — 등록된 영상을 선택하거나 일괄 스크래핑을 실행해 메타데이터를 채웁니다.
+4. **탐색** — 배우 / 시리즈 / 태그 등으로 필터링하며 컬렉션을 관리합니다.
+
+---
+
+## 화면 구성
+
+| 탭 | 설명 |
+|----|------|
+| 라이브러리 | 그리드 뷰로 영상 목록 탐색, 검색 및 필터 |
+| 배우 | 등록된 배우 목록, 배우별 영상 필터 |
+| 시리즈 | 시리즈별 영상 그룹 |
+| 태그 | 태그 목록 및 연관 태그 분석 |
+| 메이커 | 제작사별 영상 필터 |
+| 설정 | 스캔 폴더, 스크래핑 옵션, 로그 설정 |
+| 로그 | 앱 이벤트 실시간 확인 (설정에서 활성화 필요) |
+
+---
+
+## 직접 빌드
+
+### 사전 준비
+
+- [Node.js](https://nodejs.org/) 18 이상
+- [pnpm](https://pnpm.io/) (`npm install -g pnpm`)
+- [Rust](https://www.rust-lang.org/tools/install)
+- [Tauri CLI 전제 조건](https://tauri.app/start/prerequisites/) (Visual Studio C++ 빌드 도구 포함)
+
+### 빌드
+
+```bash
+# 의존성 설치
+pnpm install
+
+# 개발 모드 실행
+pnpm tauri dev
+
+# 배포용 빌드 (src-tauri/target/release/bundle/ 에 생성)
+pnpm tauri build
+```
+
+---
+
+## 기술 스택
+
+- **프론트엔드** — React 19, TypeScript, Vite, TailwindCSS, Zustand
+- **백엔드** — Rust, Tauri 2, SQLite (rusqlite)
+- **미디어 처리** — Windows Media Foundation (썸네일 · 프레임 추출)
+- **스크래핑** — rquest, scraper
+
+---
+
+## 라이선스
+
+이 프로젝트는 개인 용도로 제작되었습니다.

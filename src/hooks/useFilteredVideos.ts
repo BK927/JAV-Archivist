@@ -82,7 +82,12 @@ export function useFilteredVideos(
       if (filters.sortBy === 'title') {
         cmp = a.title.localeCompare(b.title, 'ja')
       } else if (filters.sortBy === 'releasedAt') {
-        cmp = (a.releasedAt ?? '').localeCompare(b.releasedAt ?? '')
+        const aVal = a.releasedAt
+        const bVal = b.releasedAt
+        if (!aVal && !bVal) cmp = 0
+        else if (!aVal) return 1
+        else if (!bVal) return -1
+        else cmp = aVal.localeCompare(bVal)
       } else {
         cmp = a.addedAt.localeCompare(b.addedAt)
       }

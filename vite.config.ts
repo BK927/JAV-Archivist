@@ -36,6 +36,11 @@ export default defineConfig({
     },
   },
 
+  optimizeDeps: {
+    exclude: ['src-tauri'],
+    entries: ['index.html'],
+  },
+
   test: {
     globals: true,
     environment: 'jsdom',
