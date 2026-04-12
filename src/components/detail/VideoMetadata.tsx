@@ -204,15 +204,17 @@ export default function VideoMetadata({ video }: VideoMetadataProps) {
           <FolderOpen className="w-4 h-4 mr-1" />
           폴더 열기
         </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleScrape}
-          disabled={isScraping}
-        >
-          <Download className={`w-4 h-4 mr-1 ${isScraping ? 'animate-spin' : ''}`} />
-          {isScraping ? '수집 중...' : video.scrapeStatus === 'not_scraped' ? '메타데이터 수집' : '재수집'}
-        </Button>
+        {!isUnidentified(video) && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleScrape}
+            disabled={isScraping}
+          >
+            <Download className={`w-4 h-4 mr-1 ${isScraping ? 'animate-spin' : ''}`} />
+            {isScraping ? '수집 중...' : video.scrapeStatus === 'not_scraped' ? '메타데이터 수집' : '재수집'}
+          </Button>
+        )}
       </div>
     </div>
   )
