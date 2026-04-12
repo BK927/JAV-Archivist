@@ -57,10 +57,10 @@ export default function VideoCard({ video, onClick, selectionMode, selected, onT
       onMouseLeave={() => setHovered(false)}
     >
       {/* 썸네일 영역 */}
-      <div className="relative aspect-[800/538] bg-muted overflow-hidden rounded-t-md">
+      <div className="relative aspect-800/538 bg-muted overflow-hidden rounded-t-md">
         {selectionMode && (
           <div className={cn(
-            'absolute top-1.5 left-1.5 z-[4] w-5 h-5 rounded border-2 flex items-center justify-center text-xs',
+            'absolute top-1.5 left-1.5 z-4 w-5 h-5 rounded border-2 flex items-center justify-center text-xs',
             selected
               ? 'bg-primary border-primary text-primary-foreground'
               : 'border-muted-foreground/50 bg-black/30'
@@ -82,7 +82,7 @@ export default function VideoCard({ video, onClick, selectionMode, selected, onT
             <img
               src={assetUrl(video.thumbnailPath)}
               alt={video.code}
-              className="relative w-full h-full object-contain z-[1]"
+              className="relative w-full h-full object-contain z-1"
               loading="lazy"
             />
           </>
@@ -95,7 +95,7 @@ export default function VideoCard({ video, onClick, selectionMode, selected, onT
         {/* 품번 배지 - 좌상단 */}
         <Badge
           className={cn(
-            'absolute top-1.5 z-[2] bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 font-mono font-bold',
+            'absolute top-1.5 z-2 bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 font-mono font-bold',
             selectionMode ? 'left-8' : 'left-1.5'
           )}
           variant="default"
@@ -105,7 +105,7 @@ export default function VideoCard({ video, onClick, selectionMode, selected, onT
 
         {/* 즐겨찾기 배지 - 우상단 */}
         {video.favorite && (
-          <div className="absolute top-1.5 right-1.5 z-[2]">
+          <div className="absolute top-1.5 right-1.5 z-2">
             <Star className="w-3.5 h-3.5 fill-primary text-primary" />
           </div>
         )}
@@ -114,7 +114,7 @@ export default function VideoCard({ video, onClick, selectionMode, selected, onT
         {!selectionMode && (
           <div
             className={cn(
-              'absolute inset-0 z-[3] bg-black/60 flex items-center justify-center transition-opacity',
+              'absolute inset-0 z-3 bg-black/60 flex items-center justify-center transition-opacity',
               hovered ? 'opacity-100' : 'opacity-0'
             )}
           >
@@ -127,7 +127,7 @@ export default function VideoCard({ video, onClick, selectionMode, selected, onT
       <div
         className={cn(
           'p-2 space-y-0.5 bg-card rounded-b-md',
-          hovered && 'absolute left-0 right-0 top-full -mt-[1px] border border-t-0 border-primary/50 rounded-t-none shadow-lg'
+          hovered && 'absolute left-0 right-0 top-full -mt-px border border-t-0 border-primary/50 rounded-t-none shadow-lg'
         )}
       >
         <p
