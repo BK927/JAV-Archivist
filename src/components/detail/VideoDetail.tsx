@@ -78,7 +78,7 @@ export default function VideoDetail({ video, onClose }: VideoDetailProps) {
       />
 
       {/* Sample Images */}
-      <SampleImageGrid images={sampleImages} />
+      <SampleImageGrid images={sampleImages} videoId={video.id} onImagesUpdated={setSampleImages} />
 
       {/* Mini Preview */}
       <MiniPreview
