@@ -860,6 +860,44 @@ pub fn set_thumbnail_path(conn: &Connection, video_id: &str, path: &str) -> Resu
     Ok(())
 }
 
+/// Get videos that have no sample images at all.
+/// Returns (video_id, first_file_path) tuples.
+pub fn get_videos_needing_samples(conn: &Connection) -> Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT v.id, vf.path FROM videos v
+         JOIN video_files vf ON vf.video_id = v.id
+         LEFT JOIN sample_images si ON si.video_id = v.id
+         WHERE si.id IS NULL
+         GROUP BY v.id"
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    rows.collect()
+}
+
+/// Get file paths of existing sample images for a video.
+pub fn get_sample_image_paths(conn: &Connection, video_id: &str) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT path FROM sample_images WHERE video_id = ?1 ORDER BY sort_order ASC"
+    )?;
+    let rows = stmt.query_map([video_id], |row| row.get::<_, String>(0))?;
+    rows.collect()
+}
+
+/// Replace sample images for a video with new local ones.
+pub fn save_local_sample_images(conn: &Connection, video_id: &str, paths: &[String]) -> Result<()> {
+    conn.execute("DELETE FROM sample_images WHERE video_id = ?1", [video_id])?;
+    for (i, path) in paths.iter().enumerate() {
+        let img_id = Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO sample_images (id, video_id, path, sort_order) VALUES (?1, ?2, ?3, ?4)",
+            params![img_id, video_id, path, i as u32],
+        )?;
+    }
+    Ok(())
+}
+
 /// Assign a new code to a video. If a video with that code already exists,
 /// merge files into the existing video and delete the old one.
 /// Returns the final video ID.
