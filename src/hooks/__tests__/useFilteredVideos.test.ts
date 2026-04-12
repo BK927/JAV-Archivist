@@ -11,6 +11,7 @@ const BASE_FILTERS: FilterState = {
   favoriteOnly: false,
   tagFilter: { groups: [], groupOperator: 'AND' },
   scrapeStatusFilter: 'all',
+  unidentifiedOnly: false,
 }
 
 describe('useFilteredVideos', () => {

@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { isUnidentified } from '@/types'
 import type { Video, FilterState } from '@/types'
 
 export function useFilteredVideos(
@@ -54,6 +55,11 @@ export function useFilteredVideos(
     // 스크레이프 상태 필터
     if (filters.scrapeStatusFilter !== 'all') {
       result = result.filter((v) => v.scrapeStatus === filters.scrapeStatusFilter)
+    }
+
+    // 미식별 필터
+    if (filters.unidentifiedOnly) {
+      result = result.filter((v) => isUnidentified(v))
     }
 
     // 태그 그룹 필터

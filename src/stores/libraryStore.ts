@@ -41,6 +41,7 @@ const DEFAULT_FILTERS: FilterState = {
   favoriteOnly: false,
   tagFilter: { groups: [], groupOperator: 'AND' },
   scrapeStatusFilter: 'all',
+  unidentifiedOnly: false,
 }
 
 export const useLibraryStore = create<LibraryStore>((set, get) => ({

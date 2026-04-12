@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Play, Star } from 'lucide-react'
-import type { Video } from '@/types'
+import { isUnidentified, displayCode, type Video } from '@/types'
 import { cn, assetUrl } from '@/lib/utils'
 
 interface VideoCardProps {
@@ -100,8 +100,17 @@ export default function VideoCard({ video, onClick, selectionMode, selected, onT
           )}
           variant="default"
         >
-          {video.code}
+          {displayCode(video)}
         </Badge>
+
+        {isUnidentified(video) && (
+          <span className={cn(
+            'absolute top-8 z-2 bg-muted text-muted-foreground text-[10px] px-1.5 py-0.5 rounded font-medium',
+            selectionMode ? 'left-8' : 'left-1.5'
+          )}>
+            미식별
+          </span>
+        )}
 
         {/* 즐겨찾기 배지 - 우상단 */}
         {video.favorite && (

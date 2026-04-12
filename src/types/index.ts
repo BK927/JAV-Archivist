@@ -24,6 +24,26 @@ export interface Video {
   makerName: string | null
 }
 
+export interface SpriteInfo {
+  url: string
+  width: number
+  height: number
+  columns: number
+  rows: number
+  interval: number
+  totalFrames: number
+}
+
+export function isUnidentified(video: Video): boolean {
+  return video.code === '?' || video.code.startsWith('?:')
+}
+
+/** Extract display name from code. "?:Folder_Name" → "Folder_Name", others → code as-is */
+export function displayCode(video: Video): string {
+  if (video.code.startsWith('?:')) return video.code.slice(2)
+  return video.code
+}
+
 export interface Actor {
   id: string
   name: string
@@ -81,6 +101,7 @@ export interface FilterState {
   favoriteOnly: boolean
   tagFilter: TagFilter
   scrapeStatusFilter: ScrapeStatus | 'all'
+  unidentifiedOnly: boolean
 }
 
 export interface AppSettings {

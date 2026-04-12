@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { useTauriCommand } from '@/hooks/useTauriCommand'
 import { useLibraryStore } from '@/stores/libraryStore'
+import { isUnidentified, displayCode } from '@/types'
 import type { Video, Actor } from '@/types'
 import { assetUrl, cn } from '@/lib/utils'
 
@@ -61,7 +62,7 @@ export default function VideoMetadata({ video }: VideoMetadataProps) {
       {/* Code + scrape status */}
       <div>
         <div className="flex items-center gap-2 mb-1">
-          <Badge className="bg-primary text-primary-foreground font-mono">{video.code}</Badge>
+          <Badge className="bg-primary text-primary-foreground font-mono">{displayCode(video)}</Badge>
           {video.scrapeStatus !== 'not_scraped' && (
             <Badge
               variant="outline"
@@ -74,6 +75,11 @@ export default function VideoMetadata({ video }: VideoMetadataProps) {
             >
               {video.scrapeStatus === 'complete' ? '수집 완료' : video.scrapeStatus === 'partial' ? '부분 수집' : '실패'}
             </Badge>
+          )}
+          {isUnidentified(video) && (
+            <span className="border border-muted-foreground/30 text-muted-foreground text-xs px-2 py-0.5 rounded">
+              미식별
+            </span>
           )}
         </div>
         <h1 className="text-lg font-semibold leading-snug">{video.title}</h1>

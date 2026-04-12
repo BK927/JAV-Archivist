@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { X } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { useLibraryStore } from '@/stores/libraryStore'
 import TagPopover from '@/components/library/TagPopover'
 import type { FilterState } from '@/types'
@@ -102,6 +103,23 @@ export default function FilterBar({
       >
         ★ 즐겨찾기
       </Badge>
+
+      {/* 미식별 토글 */}
+      <button
+        onClick={() =>
+          setFilters({
+            unidentifiedOnly: !filters.unidentifiedOnly,
+          })
+        }
+        className={cn(
+          'text-xs px-2 py-1 rounded border transition-colors h-7 shrink-0',
+          filters.unidentifiedOnly
+            ? 'bg-muted text-foreground border-muted-foreground/50'
+            : 'text-muted-foreground border-border hover:border-muted-foreground/30'
+        )}
+      >
+        미식별
+      </button>
 
       {/* 수집 상태 필터 */}
       <Select

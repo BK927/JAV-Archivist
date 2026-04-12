@@ -10,6 +10,7 @@ const DEFAULT_FILTERS: FilterState = {
   favoriteOnly: false,
   tagFilter: { groups: [], groupOperator: 'AND' },
   scrapeStatusFilter: 'all',
+  unidentifiedOnly: false,
 }
 
 beforeEach(() => {
