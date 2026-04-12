@@ -18,6 +18,8 @@ interface PlayerControlsProps {
   partLabel?: string
   speedIndex: number
   onSpeedChange: (index: number) => void
+  seekDelta: number | null
+  seekDeltaKey: number
 }
 
 export const SPEEDS = [0.5, 1, 1.5, 2]
@@ -29,6 +31,8 @@ export default function PlayerControls({
   partLabel,
   speedIndex,
   onSpeedChange,
+  seekDelta,
+  seekDeltaKey,
 }: PlayerControlsProps) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -36,6 +40,8 @@ export default function PlayerControls({
   const [volume, setVolume] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
   const [hoverTime, setHoverTime] = useState<{ time: number; left: number } | null>(null)
+  const [seekDeltaVisible, setSeekDeltaVisible] = useState(false)
+  const seekDeltaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isSeekingRef = useRef(false)
 
   // Sync state from video element events
@@ -124,6 +130,16 @@ export default function PlayerControls({
   const handleSeekLeave = useCallback(() => {
     setHoverTime(null)
   }, [])
+
+  useEffect(() => {
+    if (seekDelta === null) return
+    setSeekDeltaVisible(true)
+    if (seekDeltaTimerRef.current) clearTimeout(seekDeltaTimerRef.current)
+    seekDeltaTimerRef.current = setTimeout(() => setSeekDeltaVisible(false), 1000)
+    return () => {
+      if (seekDeltaTimerRef.current) clearTimeout(seekDeltaTimerRef.current)
+    }
+  }, [seekDelta, seekDeltaKey])
 
   // --- Seek bar drag ---
   const seekBarRef = useRef<HTMLDivElement>(null)
@@ -273,6 +289,17 @@ export default function PlayerControls({
         <span className="text-white/60 text-xs font-mono ml-2">
           {formatTime(currentTime)} / {formatTime(duration)}
         </span>
+
+        {/* Seek delta indicator */}
+        {seekDelta !== null && (
+          <span
+            className={`text-primary text-xs font-mono font-bold transition-opacity duration-300 ${
+              seekDeltaVisible ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
+            {seekDelta > 0 ? `+${seekDelta}s` : `${seekDelta}s`}
+          </span>
+        )}
 
         {/* Spacer */}
         <div className="flex-1" />

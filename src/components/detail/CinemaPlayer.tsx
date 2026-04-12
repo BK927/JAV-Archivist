@@ -30,6 +30,8 @@ export default function CinemaPlayer({
   const [controlsVisible, setControlsVisible] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [speedIndex, setSpeedIndex] = useState(1)
+  const [seekDelta] = useState<number | null>(null)
+  const [seekDeltaKey] = useState(0)
   const mouseOverControlsRef = useRef(false)
 
   // --- Auto-hide controls ---
@@ -259,6 +261,8 @@ export default function CinemaPlayer({
           partLabel={partLabel}
           speedIndex={speedIndex}
           onSpeedChange={setSpeedIndex}
+          seekDelta={seekDelta}
+          seekDeltaKey={seekDeltaKey}
         />
       </div>
     </div>
