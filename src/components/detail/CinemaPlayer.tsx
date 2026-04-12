@@ -181,7 +181,7 @@ export default function CinemaPlayer({
     }).then((info) => {
       setSpriteInfo(info ?? null)
     }).catch(() => {
-      // FFmpeg not available or generation failed — no sprite preview
+      // Generation failed — no sprite preview
     })
   }, [currentPart, files, videoId])
 

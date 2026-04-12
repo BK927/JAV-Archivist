@@ -99,7 +99,7 @@ pub fn extract_frame(file_path: &str, timestamp: f64, output_path: &Path) -> boo
 
             // Read a sample
             let mut flags: u32 = 0;
-            let mut timestamp_out: i64 = 0;
+            let mut _timestamp_out: i64 = 0;
             let mut sample: Option<IMFSample> = None;
             reader
                 .ReadSample(
@@ -107,7 +107,7 @@ pub fn extract_frame(file_path: &str, timestamp: f64, output_path: &Path) -> boo
                     0,
                     None,
                     Some(&mut flags),
-                    Some(&mut timestamp_out),
+                    Some(&mut _timestamp_out),
                     Some(&mut sample),
                 )
                 .ok()?;
@@ -134,7 +134,10 @@ pub fn extract_frame(file_path: &str, timestamp: f64, output_path: &Path) -> boo
             let height = (packed & 0xFFFFFFFF) as u32;
 
             // Convert BGRA bottom-up to RGB top-down
-            let stride = (width * 4) as usize;
+            // Query actual stride (may differ from width*4 due to alignment padding)
+            let stride = actual_type.GetUINT32(&MF_MT_DEFAULT_STRIDE)
+                .map(|s| s as usize)
+                .unwrap_or((width * 4) as usize);
             let mut rgb = Vec::with_capacity((width * height * 3) as usize);
             for y in (0..height as usize).rev() {
                 for x in 0..width as usize {
