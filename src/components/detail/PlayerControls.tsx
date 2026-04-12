@@ -20,6 +20,9 @@ interface PlayerControlsProps {
   onSpeedChange: (index: number) => void
   seekDelta: number | null
   seekDeltaKey: number
+  onPlayPause?: () => void
+  onSkip?: (delta: number) => void
+  onMuteToggle?: () => void
 }
 
 export const SPEEDS = [0.5, 1, 1.5, 2]
@@ -33,6 +36,9 @@ export default function PlayerControls({
   onSpeedChange,
   seekDelta,
   seekDeltaKey,
+  onPlayPause,
+  onSkip,
+  onMuteToggle,
 }: PlayerControlsProps) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
@@ -88,25 +94,29 @@ export default function PlayerControls({
     } else {
       video.pause()
     }
-  }, [videoRef])
+    onPlayPause?.()
+  }, [videoRef, onPlayPause])
 
   const skipBack = useCallback(() => {
     const video = videoRef.current
     if (!video) return
     video.currentTime = Math.max(0, video.currentTime - 10)
-  }, [videoRef])
+    onSkip?.(-10)
+  }, [videoRef, onSkip])
 
   const skipForward = useCallback(() => {
     const video = videoRef.current
     if (!video) return
     video.currentTime = Math.min(video.duration || 0, video.currentTime + 10)
-  }, [videoRef])
+    onSkip?.(10)
+  }, [videoRef, onSkip])
 
   const toggleMute = useCallback(() => {
     const video = videoRef.current
     if (!video) return
     video.muted = !video.muted
-  }, [videoRef])
+    onMuteToggle?.()
+  }, [videoRef, onMuteToggle])
 
   const cycleSpeed = useCallback(() => {
     const next = (speedIndex + 1) % SPEEDS.length
@@ -163,18 +173,29 @@ export default function PlayerControls({
       e.preventDefault()
       isSeekingRef.current = true
       seekToPosition(e.clientX)
+      handleSeekHover(e)
 
-      const onMouseMove = (ev: MouseEvent) => seekToPosition(ev.clientX)
+      const onMouseMove = (ev: MouseEvent) => {
+        seekToPosition(ev.clientX)
+        const bar = seekBarRef.current
+        const video = videoRef.current
+        if (bar && video && isFinite(video.duration)) {
+          const rect = bar.getBoundingClientRect()
+          const ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width))
+          setHoverTime({ time: ratio * video.duration, left: ev.clientX - rect.left })
+        }
+      }
       const onMouseUp = (ev: MouseEvent) => {
         seekToPosition(ev.clientX)
         isSeekingRef.current = false
+        setHoverTime(null)
         window.removeEventListener('mousemove', onMouseMove)
         window.removeEventListener('mouseup', onMouseUp)
       }
       window.addEventListener('mousemove', onMouseMove)
       window.addEventListener('mouseup', onMouseUp)
     },
-    [seekToPosition],
+    [seekToPosition, handleSeekHover, videoRef],
   )
 
   // --- Volume bar drag ---

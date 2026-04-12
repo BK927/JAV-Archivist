@@ -334,9 +334,21 @@ export default function CinemaPlayer({
           onToggleFullscreen={toggleFullscreen}
           partLabel={partLabel}
           speedIndex={speedIndex}
-          onSpeedChange={setSpeedIndex}
+          onSpeedChange={(index) => {
+            setSpeedIndex(index)
+            triggerFeedback({ type: 'speed', value: SPEEDS[index] })
+          }}
           seekDelta={seekDelta}
           seekDeltaKey={seekDeltaKey}
+          onPlayPause={() => {
+            const video = videoRef.current
+            if (video) triggerFeedback({ type: video.paused ? 'pause' : 'play' })
+          }}
+          onSkip={(delta) => triggerSeekDelta(delta)}
+          onMuteToggle={() => {
+            const video = videoRef.current
+            if (video) triggerFeedback({ type: video.muted ? 'mute' : 'unmute' })
+          }}
         />
       </div>
     </div>
