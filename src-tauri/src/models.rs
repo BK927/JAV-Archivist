@@ -157,6 +157,6 @@ pub struct SpriteInfo {
 #[serde(rename_all = "camelCase")]
 pub struct ScanResult {
     pub videos: Vec<Video>,
-    pub added: u32,
+    pub added: Vec<String>,
     pub removed: u32,
 }

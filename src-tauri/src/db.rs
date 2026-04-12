@@ -229,7 +229,7 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<()> {
     Ok(())
 }
 
-pub fn upsert_videos(conn: &Connection, videos: &[Video]) -> Result<u32> {
+pub fn upsert_videos(conn: &Connection, videos: &[Video]) -> Result<Vec<String>> {
     conn.execute_batch("BEGIN")?;
     let result = upsert_videos_inner(conn, videos);
     match result {
@@ -244,8 +244,8 @@ pub fn upsert_videos(conn: &Connection, videos: &[Video]) -> Result<u32> {
     }
 }
 
-fn upsert_videos_inner(conn: &Connection, videos: &[Video]) -> Result<u32> {
-    let mut added: u32 = 0;
+fn upsert_videos_inner(conn: &Connection, videos: &[Video]) -> Result<Vec<String>> {
+    let mut added: Vec<String> = Vec::new();
     for video in videos {
         let existing_id: Option<String> = if video.code != "?" {
             conn.query_row(
@@ -267,14 +267,13 @@ fn upsert_videos_inner(conn: &Connection, videos: &[Video]) -> Result<u32> {
         };
 
         let video_id = match existing_id {
-            Some(id) => {
+            Some(ref id) => {
                 // Existing: update files only, preserve metadata
-                conn.execute("DELETE FROM video_files WHERE video_id = ?1", [&id])?;
-                id
+                conn.execute("DELETE FROM video_files WHERE video_id = ?1", [id])?;
+                id.clone()
             }
             None => {
                 // New video: insert record
-                added += 1;
                 conn.execute(
                     "INSERT INTO videos (id, code, title, thumbnail_path, series, duration, watched, favorite, added_at, released_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -294,6 +293,10 @@ fn upsert_videos_inner(conn: &Connection, videos: &[Video]) -> Result<u32> {
                 video.id.clone()
             }
         };
+
+        if existing_id.is_none() {
+            added.push(video_id.clone());
+        }
 
         for file in &video.files {
             let file_id = Uuid::new_v4().to_string();
