@@ -1,6 +1,7 @@
 mod db;
 mod ffmpeg;
 mod logging;
+mod media;
 mod models;
 mod player;
 mod scanner;
