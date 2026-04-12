@@ -44,6 +44,7 @@ struct ScannedFile {
     size: u64,
     code: String,
     filename: String,
+    parent_dir: String,
 }
 
 pub fn scan_folders(folders: &[String]) -> Result<Vec<Video>, String> {
@@ -84,11 +85,17 @@ pub fn scan_folders(folders: &[String]) -> Result<Vec<Video>, String> {
 
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
 
+            let parent_dir = path
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+
             let sf = ScannedFile {
                 path: path.to_string_lossy().to_string(),
                 size,
                 code: code.clone(),
                 filename,
+                parent_dir,
             };
             if code == "?" {
                 tracing::warn!("scanner: no code extracted for {:?}", sf.path);
@@ -97,45 +104,67 @@ pub fn scan_folders(folders: &[String]) -> Result<Vec<Video>, String> {
         }
     }
 
-    let videos = group_by_code(scanned);
+    let videos = group_by_code(scanned, folders);
     tracing::info!("scanner: found {} videos", videos.len());
     Ok(videos)
 }
 
-fn group_by_code(files: Vec<ScannedFile>) -> Vec<Video> {
-    let mut groups: HashMap<String, Vec<ScannedFile>> = HashMap::new();
-    let mut unknown: Vec<Video> = Vec::new();
+fn group_by_code(files: Vec<ScannedFile>, scan_roots: &[String]) -> Vec<Video> {
+    use std::collections::HashSet;
+    use std::path::Path;
+
+    let mut code_groups: HashMap<String, Vec<ScannedFile>> = HashMap::new();
+    let mut unknown_individual: Vec<Video> = Vec::new();
+    let mut unknown_folder_groups: HashMap<String, Vec<ScannedFile>> = HashMap::new();
     let now = Utc::now().to_rfc3339();
+
+    // Normalize scan roots for comparison
+    let root_set: HashSet<String> = scan_roots
+        .iter()
+        .map(|s| {
+            let p = Path::new(s.trim());
+            p.to_string_lossy().to_string()
+        })
+        .collect();
 
     for file in files {
         if file.code == "?" {
-            unknown.push(Video {
-                id: Uuid::new_v4().to_string(),
-                code: "?".to_string(),
-                title: file.filename.clone(),
-                files: vec![VideoFile {
-                    path: file.path,
-                    size: file.size,
-                }],
-                thumbnail_path: None,
-                actors: vec![],
-                series: None,
-                tags: vec![],
-                duration: None,
-                watched: false,
-                favorite: false,
-                added_at: now.clone(),
-                released_at: None,
-                scrape_status: ScrapeStatus::NotScraped,
-                scraped_at: None,
-                maker_name: None,
-            });
+            let is_in_root = root_set.contains(&file.parent_dir);
+
+            if is_in_root {
+                unknown_individual.push(Video {
+                    id: Uuid::new_v4().to_string(),
+                    code: "?".to_string(),
+                    title: file.filename.clone(),
+                    files: vec![VideoFile {
+                        path: file.path,
+                        size: file.size,
+                    }],
+                    thumbnail_path: None,
+                    actors: vec![],
+                    series: None,
+                    tags: vec![],
+                    duration: None,
+                    watched: false,
+                    favorite: false,
+                    added_at: now.clone(),
+                    released_at: None,
+                    scrape_status: ScrapeStatus::NotScraped,
+                    scraped_at: None,
+                    maker_name: None,
+                });
+            } else {
+                unknown_folder_groups
+                    .entry(file.parent_dir.clone())
+                    .or_default()
+                    .push(file);
+            }
         } else {
-            groups.entry(file.code.clone()).or_default().push(file);
+            code_groups.entry(file.code.clone()).or_default().push(file);
         }
     }
 
-    let mut videos: Vec<Video> = groups
+    let mut videos: Vec<Video> = code_groups
         .into_iter()
         .map(|(code, files)| {
             let title = files[0].filename.clone();
@@ -166,7 +195,40 @@ fn group_by_code(files: Vec<ScannedFile>) -> Vec<Video> {
         })
         .collect();
 
-    videos.extend(unknown);
+    for (parent_dir, files) in unknown_folder_groups {
+        let folder_name = Path::new(&parent_dir)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        videos.push(Video {
+            id: Uuid::new_v4().to_string(),
+            code: format!("?:{folder_name}"),
+            title: folder_name,
+            files: files
+                .into_iter()
+                .map(|f| VideoFile {
+                    path: f.path,
+                    size: f.size,
+                })
+                .collect(),
+            thumbnail_path: None,
+            actors: vec![],
+            series: None,
+            tags: vec![],
+            duration: None,
+            watched: false,
+            favorite: false,
+            added_at: now.clone(),
+            released_at: None,
+            scrape_status: ScrapeStatus::NotScraped,
+            scraped_at: None,
+            maker_name: None,
+        });
+    }
+
+    videos.extend(unknown_individual);
     videos
 }
 
@@ -336,6 +398,48 @@ mod tests {
         let result = scan_folders(&[dir.path().to_string_lossy().to_string()]).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].code, "?");
+    }
+
+    #[test]
+    fn test_scan_groups_unknown_by_folder() {
+        let dir = TempDir::new().unwrap();
+        let sub = dir.path().join("My_Folder");
+        fs::create_dir(&sub).unwrap();
+        fs::write(sub.join("part1.mp4"), "fake").unwrap();
+        fs::write(sub.join("part2.mp4"), "fake").unwrap();
+
+        let result = scan_folders(&[dir.path().to_string_lossy().to_string()]).unwrap();
+
+        let grouped: Vec<&Video> = result.iter().filter(|v| v.code == "?:My_Folder").collect();
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped[0].title, "My_Folder");
+        assert_eq!(grouped[0].files.len(), 2);
+    }
+
+    #[test]
+    fn test_scan_root_unknown_stays_individual() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("random1.mp4"), "fake").unwrap();
+        fs::write(dir.path().join("random2.mp4"), "fake").unwrap();
+
+        let result = scan_folders(&[dir.path().to_string_lossy().to_string()]).unwrap();
+
+        let unknowns: Vec<&Video> = result.iter().filter(|v| v.code == "?").collect();
+        assert_eq!(unknowns.len(), 2);
+    }
+
+    #[test]
+    fn test_scan_mixed_folder() {
+        let dir = TempDir::new().unwrap();
+        let sub = dir.path().join("Mixed");
+        fs::create_dir(&sub).unwrap();
+        fs::write(sub.join("part1.mp4"), "fake").unwrap();      // code="?"
+        fs::write(sub.join("ABC-123.mp4"), "fake").unwrap();     // code="ABC-123"
+
+        let result = scan_folders(&[dir.path().to_string_lossy().to_string()]).unwrap();
+
+        assert!(result.iter().any(|v| v.code == "ABC-123"));
+        assert!(result.iter().any(|v| v.code == "?:Mixed" && v.files.len() == 1));
     }
 
     #[test]
