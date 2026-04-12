@@ -16,22 +16,25 @@ interface PlayerControlsProps {
   isFullscreen: boolean
   onToggleFullscreen: () => void
   partLabel?: string
+  speedIndex: number
+  onSpeedChange: (index: number) => void
 }
 
-const SPEEDS = [0.5, 1, 1.5, 2]
+export const SPEEDS = [0.5, 1, 1.5, 2]
 
 export default function PlayerControls({
   videoRef,
   isFullscreen,
   onToggleFullscreen,
   partLabel,
+  speedIndex,
+  onSpeedChange,
 }: PlayerControlsProps) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)
   const [volume, setVolume] = useState(1)
   const [isMuted, setIsMuted] = useState(false)
-  const [speedIndex, setSpeedIndex] = useState(1) // default 1x
   const isSeekingRef = useRef(false)
 
   // Sync state from video element events
@@ -99,13 +102,11 @@ export default function PlayerControls({
   }, [videoRef])
 
   const cycleSpeed = useCallback(() => {
-    setSpeedIndex((prev) => {
-      const next = (prev + 1) % SPEEDS.length
-      const video = videoRef.current
-      if (video) video.playbackRate = SPEEDS[next]
-      return next
-    })
-  }, [videoRef])
+    const next = (speedIndex + 1) % SPEEDS.length
+    const video = videoRef.current
+    if (video) video.playbackRate = SPEEDS[next]
+    onSpeedChange(next)
+  }, [videoRef, speedIndex, onSpeedChange])
 
   // --- Seek bar drag ---
   const seekBarRef = useRef<HTMLDivElement>(null)

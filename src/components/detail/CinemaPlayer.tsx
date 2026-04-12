@@ -29,6 +29,7 @@ export default function CinemaPlayer({
   const [currentPart, setCurrentPart] = useState(initialPartIndex)
   const [controlsVisible, setControlsVisible] = useState(true)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [speedIndex, setSpeedIndex] = useState(1)
   const mouseOverControlsRef = useRef(false)
 
   // --- Auto-hide controls ---
@@ -256,6 +257,8 @@ export default function CinemaPlayer({
           isFullscreen={isFullscreen}
           onToggleFullscreen={toggleFullscreen}
           partLabel={partLabel}
+          speedIndex={speedIndex}
+          onSpeedChange={setSpeedIndex}
         />
       </div>
     </div>
