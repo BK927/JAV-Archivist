@@ -140,3 +140,15 @@ pub struct ActorDetail {
     pub name: String,
     pub name_kanji: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpriteInfo {
+    pub url: String,
+    pub width: u32,
+    pub height: u32,
+    pub columns: u32,
+    pub rows: u32,
+    pub interval: u32,
+    pub total_frames: u32,
+}

@@ -1,4 +1,5 @@
 mod db;
+mod ffmpeg;
 mod logging;
 mod models;
 mod player;
@@ -27,6 +28,9 @@ struct SamplesDir(PathBuf);
 struct ScrapeCancel(Arc<AtomicBool>);
 struct ScrapeRunning(Arc<AtomicBool>);
 struct WatcherHandle(Mutex<Option<RecommendedWatcher>>);
+struct FfmpegPath(Option<PathBuf>);
+struct FfprobePath(Option<PathBuf>);
+struct SpritesDir(PathBuf);
 
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -531,6 +535,11 @@ fn reset_data(
     Ok(())
 }
 
+#[tauri::command]
+fn check_ffmpeg(ffmpeg_path: tauri::State<'_, FfmpegPath>) -> bool {
+    ffmpeg::check(&ffmpeg_path.0)
+}
+
 fn start_auto_scrape(app: &tauri::AppHandle, db_path: &std::path::Path, thumbnails_dir: &std::path::Path, actors_dir: &std::path::Path, samples_dir: &std::path::Path, cancel_flag: Arc<AtomicBool>, scrape_running: Arc<AtomicBool>) {
     // Skip if a scrape (manual or auto) is already running
     if scrape_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
@@ -723,6 +732,20 @@ pub fn run() {
             std::fs::create_dir_all(&samples_dir)?;
             _app.manage(SamplesDir(samples_dir));
 
+            let sprites_dir = data_dir.join("sprites");
+            std::fs::create_dir_all(&sprites_dir)?;
+            _app.manage(SpritesDir(sprites_dir));
+
+            let ffmpeg_path = ffmpeg::resolve_binary("ffmpeg");
+            let ffprobe_path = ffmpeg::resolve_binary("ffprobe");
+            if ffmpeg_path.is_some() {
+                tracing::info!("FFmpeg found: {:?}", ffmpeg_path.as_ref().unwrap());
+            } else {
+                tracing::warn!("FFmpeg not found — thumbnail/sprite generation will be disabled");
+            }
+            _app.manage(FfmpegPath(ffmpeg_path));
+            _app.manage(FfprobePath(ffprobe_path));
+
             _app.manage(ScrapeCancel(Arc::new(AtomicBool::new(false))));
             _app.manage(ScrapeRunning(Arc::new(AtomicBool::new(false))));
 
@@ -793,6 +816,7 @@ pub fn run() {
             get_tag_cooccurrence,
             get_makers,
             get_sample_images,
+            check_ffmpeg,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
