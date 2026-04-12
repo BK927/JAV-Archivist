@@ -89,8 +89,11 @@ export default function VideoCard({ video, onClick, selectionMode, selected, onT
             />
           </>
         ) : (
-          <div className="w-full h-full flex items-center justify-center bg-secondary">
+          <div className="w-full h-full flex flex-col items-center justify-center bg-secondary gap-1">
             <Play className="w-8 h-8 text-muted-foreground/30" />
+            {video.scrapeStatus !== 'not_scraped' && (
+              <span className="text-[9px] text-muted-foreground/50">미리보기 생성 불가</span>
+            )}
           </div>
         )}
 

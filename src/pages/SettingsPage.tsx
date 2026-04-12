@@ -187,40 +187,6 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <Separator />
-
-      {/* FFmpeg License Notice */}
-      <div className="space-y-2">
-        <h3 className="text-sm font-medium text-muted-foreground">오픈소스 라이선스</h3>
-        <div className="text-xs text-muted-foreground space-y-1">
-          <p>
-            이 앱은 썸네일 생성 및 미리보기를 위해{' '}
-            <a href="https://ffmpeg.org" target="_blank" rel="noopener noreferrer" className="underline">
-              FFmpeg
-            </a>
-            를 사용합니다.
-          </p>
-          <p>
-            FFmpeg is licensed under the{' '}
-            <a
-              href="https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline"
-            >
-              GNU Lesser General Public License (LGPL) v2.1
-            </a>
-            .
-          </p>
-          <p>
-            FFmpeg source code:{' '}
-            <a href="https://ffmpeg.org/download.html" target="_blank" rel="noopener noreferrer" className="underline">
-              https://ffmpeg.org/download.html
-            </a>
-          </p>
-        </div>
-      </div>
-
       {/* 초기화 확인 다이얼로그 */}
       {showResetConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">

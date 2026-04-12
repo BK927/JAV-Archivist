@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ImagePlus, Loader2 } from 'lucide-react'
+import { ImagePlus, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import ImageLightbox from './ImageLightbox'
 import { assetUrl } from '@/lib/utils'
@@ -15,13 +15,23 @@ interface SampleImageGridProps {
 export default function SampleImageGrid({ images, videoId, onImagesUpdated }: SampleImageGridProps) {
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null)
   const [extracting, setExtracting] = useState(false)
+  const [error, setError] = useState(false)
   const { run } = useTauriCommand()
 
   const handleExtract = async () => {
     setExtracting(true)
+    setError(false)
     try {
       const result = await run<SampleImage[]>('generate_local_samples', { videoId }, [])
-      onImagesUpdated(result)
+      if (result.length === 0) {
+        setError(true)
+        setTimeout(() => setError(false), 3000)
+      } else {
+        onImagesUpdated(result)
+      }
+    } catch {
+      setError(true)
+      setTimeout(() => setError(false), 3000)
     } finally {
       setExtracting(false)
     }
@@ -39,16 +49,18 @@ export default function SampleImageGrid({ images, videoId, onImagesUpdated }: Sa
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 text-xs gap-1"
+              className={`h-6 text-xs gap-1 ${error ? 'text-destructive' : ''}`}
               onClick={handleExtract}
               disabled={extracting}
             >
               {extracting ? (
                 <Loader2 className="w-3 h-3 animate-spin" />
+              ) : error ? (
+                <AlertCircle className="w-3 h-3" />
               ) : (
                 <ImagePlus className="w-3 h-3" />
               )}
-              {extracting ? '추출 중...' : '로컬 추출'}
+              {extracting ? '추출 중...' : error ? '추출 실패' : '로컬 추출'}
             </Button>
           </div>
         </div>
