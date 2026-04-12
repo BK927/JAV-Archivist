@@ -16,6 +16,9 @@ export default function MiniPreview({ filePath, onEnterCinema }: MiniPreviewProp
     if (!video || !filePath) return
     video.muted = true
     video.play().catch(() => {})
+    return () => {
+      video.pause()
+    }
   }, [filePath])
 
   if (!filePath) return null

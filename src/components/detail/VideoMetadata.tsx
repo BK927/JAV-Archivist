@@ -47,7 +47,7 @@ export default function VideoMetadata({ video }: VideoMetadataProps) {
   const handleScrape = async () => {
     setIsScraping(true)
     try {
-      const updated = await run<Video>('scrape_video', { videoId: video.id }, undefined)
+      const updated = await run<Video | null>('scrape_video', { videoId: video.id }, null)
       if (updated) {
         setVideos(videos.map((v) => v.id === updated.id ? updated : v))
       }

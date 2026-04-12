@@ -6,6 +6,18 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
+ * Format seconds into a human-readable time string (h:mm:ss or m:ss).
+ */
+export function formatTime(seconds: number): string {
+  if (!isFinite(seconds) || seconds < 0) return '0:00'
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.floor(seconds % 60)
+  const pad = (n: number) => n.toString().padStart(2, '0')
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`
+}
+
+/**
  * Convert a local file path to a Tauri asset protocol URL.
  * Uses Tauri's built-in convertFileSrc for correct platform-specific URLs.
  * In non-Tauri environments (dev browser), returns the path as-is.
