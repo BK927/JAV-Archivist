@@ -229,18 +229,23 @@ pub fn save_settings(conn: &Connection, settings: &Settings) -> Result<()> {
     Ok(())
 }
 
-pub fn upsert_videos(conn: &Connection, videos: &[Video]) -> Result<()> {
+pub fn upsert_videos(conn: &Connection, videos: &[Video]) -> Result<u32> {
     conn.execute_batch("BEGIN")?;
     let result = upsert_videos_inner(conn, videos);
-    if result.is_ok() {
-        conn.execute_batch("COMMIT")?;
-    } else {
-        let _ = conn.execute_batch("ROLLBACK");
+    match result {
+        Ok(added) => {
+            conn.execute_batch("COMMIT")?;
+            Ok(added)
+        }
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(e)
+        }
     }
-    result
 }
 
-fn upsert_videos_inner(conn: &Connection, videos: &[Video]) -> Result<()> {
+fn upsert_videos_inner(conn: &Connection, videos: &[Video]) -> Result<u32> {
+    let mut added: u32 = 0;
     for video in videos {
         let existing_id: Option<String> = if video.code != "?" {
             conn.query_row(
@@ -269,6 +274,7 @@ fn upsert_videos_inner(conn: &Connection, videos: &[Video]) -> Result<()> {
             }
             None => {
                 // New video: insert record
+                added += 1;
                 conn.execute(
                     "INSERT INTO videos (id, code, title, thumbnail_path, series, duration, watched, favorite, added_at, released_at)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
@@ -310,7 +316,7 @@ fn upsert_videos_inner(conn: &Connection, videos: &[Video]) -> Result<()> {
         [],
     )?;
 
-    Ok(())
+    Ok(added)
 }
 
 pub fn get_all_videos(conn: &Connection) -> Result<Vec<Video>> {
@@ -855,6 +861,9 @@ pub fn set_thumbnail_path(conn: &Connection, video_id: &str, path: &str) -> Resu
 /// merge files into the existing video and delete the old one.
 /// Returns the final video ID.
 pub fn assign_code(conn: &Connection, video_id: &str, new_code: &str) -> Result<String> {
+    if new_code.is_empty() || new_code.starts_with("?:") || new_code == "?" {
+        return Err(rusqlite::Error::InvalidParameterName("Invalid code: reserved or empty".into()));
+    }
     // Check if a video with the new code already exists
     let existing_id: Option<String> = conn
         .query_row(

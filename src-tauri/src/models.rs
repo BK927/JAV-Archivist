@@ -152,3 +152,11 @@ pub struct SpriteInfo {
     pub interval: u32,
     pub total_frames: u32,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanResult {
+    pub videos: Vec<Video>,
+    pub added: u32,
+    pub removed: u32,
+}

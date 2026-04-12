@@ -8,8 +8,8 @@ mod scraper;
 mod watcher;
 
 use models::{
-    Actor, Maker, SampleImage, ScrapeStatus, Series as SeriesModel, Settings, Tag, TagCooccurrence,
-    Video,
+    Actor, Maker, SampleImage, ScanResult, ScrapeStatus, Series as SeriesModel, Settings, Tag,
+    TagCooccurrence, Video,
 };
 use notify::RecommendedWatcher;
 use std::collections::BTreeSet;
@@ -98,12 +98,12 @@ fn scan_library(
     thumbnails: tauri::State<'_, ThumbnailsDir>,
     ffmpeg_state: tauri::State<'_, FfmpegPath>,
     ffprobe_state: tauri::State<'_, FfprobePath>,
-) -> Result<Vec<Video>, String> {
+) -> Result<ScanResult, String> {
     tracing::info!("cmd: scan_library");
     let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
     let settings = db::get_settings(&conn).map_err(|e| e.to_string())?;
     let scanned = scanner::scan_folders(&settings.scan_folders)?;
-    db::upsert_videos(&conn, &scanned).map_err(|e| e.to_string())?;
+    let added = db::upsert_videos(&conn, &scanned).map_err(|e| e.to_string())?;
 
     // Remove orphaned videos (in DB but not on filesystem)
     // Compare by CODE (stable) — scanner generates new UUIDs each run,
@@ -116,6 +116,7 @@ fn scan_library(
         .filter(|(_, code)| !scanned_codes.contains(code))
         .map(|(id, _)| id)
         .collect();
+    let removed = orphan_ids.len() as u32;
     if !orphan_ids.is_empty() {
         tracing::info!("scan_library: removing {} orphaned videos", orphan_ids.len());
         db::delete_videos(&conn, &orphan_ids).map_err(|e| e.to_string())?;
@@ -135,7 +136,8 @@ fn scan_library(
         }
     }
 
-    db::get_all_videos(&conn).map_err(|e| e.to_string())
+    let videos = db::get_all_videos(&conn).map_err(|e| e.to_string())?;
+    Ok(ScanResult { videos, added, removed })
 }
 
 #[tauri::command]
