@@ -136,7 +136,7 @@ pub fn extract_frame(file_path: &str, timestamp: f64, output_path: &Path) -> boo
             // Convert BGRA bottom-up to RGB top-down
             // Query actual stride (may differ from width*4 due to alignment padding)
             let stride = actual_type.GetUINT32(&MF_MT_DEFAULT_STRIDE)
-                .map(|s| s as usize)
+                .map(|s| (s as i32).unsigned_abs() as usize)
                 .unwrap_or((width * 4) as usize);
             let mut rgb = Vec::with_capacity((width * height * 3) as usize);
             for y in (0..height as usize).rev() {

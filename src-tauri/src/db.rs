@@ -887,15 +887,16 @@ pub fn get_sample_image_paths(conn: &Connection, video_id: &str) -> Result<Vec<S
 
 /// Replace sample images for a video with new local ones.
 pub fn save_local_sample_images(conn: &Connection, video_id: &str, paths: &[String]) -> Result<()> {
-    conn.execute("DELETE FROM sample_images WHERE video_id = ?1", [video_id])?;
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("DELETE FROM sample_images WHERE video_id = ?1", [video_id])?;
     for (i, path) in paths.iter().enumerate() {
         let img_id = Uuid::new_v4().to_string();
-        conn.execute(
+        tx.execute(
             "INSERT INTO sample_images (id, video_id, path, sort_order) VALUES (?1, ?2, ?3, ?4)",
             params![img_id, video_id, path, i as u32],
         )?;
     }
-    Ok(())
+    tx.commit()
 }
 
 /// Assign a new code to a video. If a video with that code already exists,
