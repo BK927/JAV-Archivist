@@ -93,7 +93,12 @@ fn sync_asset_protocol_scope<R: tauri::Runtime, M: tauri::Manager<R>>(
 }
 
 #[tauri::command]
-fn scan_library(db: tauri::State<'_, DbPath>) -> Result<Vec<Video>, String> {
+fn scan_library(
+    db: tauri::State<'_, DbPath>,
+    thumbnails: tauri::State<'_, ThumbnailsDir>,
+    ffmpeg_state: tauri::State<'_, FfmpegPath>,
+    ffprobe_state: tauri::State<'_, FfprobePath>,
+) -> Result<Vec<Video>, String> {
     tracing::info!("cmd: scan_library");
     let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
     let settings = db::get_settings(&conn).map_err(|e| e.to_string())?;
@@ -114,6 +119,20 @@ fn scan_library(db: tauri::State<'_, DbPath>) -> Result<Vec<Video>, String> {
     if !orphan_ids.is_empty() {
         tracing::info!("scan_library: removing {} orphaned videos", orphan_ids.len());
         db::delete_videos(&conn, &orphan_ids).map_err(|e| e.to_string())?;
+    }
+
+    // Generate thumbnails for videos without one
+    if let (Some(ffmpeg), Some(ffprobe)) = (&ffmpeg_state.0, &ffprobe_state.0) {
+        let need_thumbs = db::get_videos_without_thumbnail(&conn).map_err(|e| e.to_string())?;
+        if !need_thumbs.is_empty() {
+            tracing::info!("scan_library: generating thumbnails for {} videos", need_thumbs.len());
+        }
+        for (video_id, file_path) in &need_thumbs {
+            if let Some(thumb_path) = ffmpeg::extract_thumbnail(ffmpeg, ffprobe, file_path, video_id, &thumbnails.0) {
+                let _ = db::set_thumbnail_path(&conn, video_id, &thumb_path);
+                tracing::info!("scan_library: thumbnail generated for {}", video_id);
+            }
+        }
     }
 
     db::get_all_videos(&conn).map_err(|e| e.to_string())

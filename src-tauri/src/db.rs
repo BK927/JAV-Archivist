@@ -827,6 +827,30 @@ pub fn get_all_video_id_codes(conn: &Connection) -> Result<Vec<(String, String)>
     Ok(rows)
 }
 
+/// Get (id, first_file_path) for videos without a thumbnail.
+pub fn get_videos_without_thumbnail(conn: &Connection) -> Result<Vec<(String, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT v.id, vf.path FROM videos v
+         JOIN video_files vf ON vf.video_id = v.id
+         WHERE v.thumbnail_path IS NULL
+         GROUP BY v.id
+         ORDER BY vf.rowid ASC"
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    rows.collect()
+}
+
+/// Set the thumbnail_path for a video.
+pub fn set_thumbnail_path(conn: &Connection, video_id: &str, path: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE videos SET thumbnail_path = ?1 WHERE id = ?2",
+        params![path, video_id],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
