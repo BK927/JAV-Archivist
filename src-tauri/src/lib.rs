@@ -311,7 +311,7 @@ async fn scrape_video(
     .await
     .map_err(|e| e.to_string())??;
 
-    if code == "?" {
+    if code == "?" || code.starts_with("?:") {
         tracing::warn!(
             "scrape_video: video_id={} has unknown code, skipping",
             video_id

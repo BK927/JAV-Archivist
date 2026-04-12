@@ -43,6 +43,7 @@ export default function VideoDetail({ video, onClose }: VideoDetailProps) {
       <CinemaPlayer
         files={video.files}
         initialPartIndex={cinemaPartIndex}
+        videoId={video.id}
         videoCode={video.code}
         videoTitle={video.title}
         onExit={() => setCinemaPartIndex(null)}

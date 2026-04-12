@@ -10,6 +10,7 @@ import ActionFeedback, { type FeedbackAction } from './ActionFeedback'
 interface CinemaPlayerProps {
   files: VideoFile[]
   initialPartIndex: number
+  videoId: string
   videoCode: string
   videoTitle: string
   onExit: () => void
@@ -21,6 +22,7 @@ const HIDE_DELAY_SHORT = 800
 export default function CinemaPlayer({
   files,
   initialPartIndex,
+  videoId,
   videoCode,
   videoTitle,
   onExit,
@@ -173,7 +175,7 @@ export default function CinemaPlayer({
     if (!file) return
 
     invoke<SpriteInfo | null>('get_or_generate_sprite', {
-      videoId: videoCode,
+      videoId: videoId,
       filePath: file.path,
       partIndex: currentPart,
     }).then((info) => {
@@ -181,7 +183,7 @@ export default function CinemaPlayer({
     }).catch(() => {
       // FFmpeg not available or generation failed — no sprite preview
     })
-  }, [currentPart, files, videoCode])
+  }, [currentPart, files, videoId])
 
   // Auto-advance on ended
   useEffect(() => {

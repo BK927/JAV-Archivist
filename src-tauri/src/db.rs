@@ -736,7 +736,7 @@ pub fn update_video_metadata(
 
 pub fn get_unscraped_for_auto(conn: &Connection) -> Result<Vec<(String, String)>> {
     let mut stmt = conn.prepare(
-        "SELECT id, code FROM videos WHERE code != '?' AND scrape_status = 'not_scraped' AND retry_count < 3",
+        "SELECT id, code FROM videos WHERE code != '?' AND code NOT LIKE '?:%' AND scrape_status = 'not_scraped' AND retry_count < 3",
     )?;
     let rows = stmt
         .query_map([], |row| {

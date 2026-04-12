@@ -195,7 +195,7 @@ fn image_dimensions(path: &Path) -> Option<(u32, u32)> {
         if data[i] == 0xFF {
             let marker = data[i + 1];
             if marker == 0xC0 || marker == 0xC2 {
-                if i + 8 <= data.len() {
+                if i + 8 < data.len() {
                     let height = ((data[i + 5] as u32) << 8) | (data[i + 6] as u32);
                     let width = ((data[i + 7] as u32) << 8) | (data[i + 8] as u32);
                     return Some((width, height));
