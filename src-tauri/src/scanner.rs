@@ -111,25 +111,22 @@ pub fn scan_folders(folders: &[String]) -> Result<Vec<Video>, String> {
 
 fn group_by_code(files: Vec<ScannedFile>, scan_roots: &[String]) -> Vec<Video> {
     use std::collections::HashSet;
-    use std::path::Path;
+    use std::path::PathBuf;
 
     let mut code_groups: HashMap<String, Vec<ScannedFile>> = HashMap::new();
     let mut unknown_individual: Vec<Video> = Vec::new();
     let mut unknown_folder_groups: HashMap<String, Vec<ScannedFile>> = HashMap::new();
     let now = Utc::now().to_rfc3339();
 
-    // Normalize scan roots for comparison
-    let root_set: HashSet<String> = scan_roots
+    // Use PathBuf for comparison — normalizes separators on Windows
+    let root_set: HashSet<PathBuf> = scan_roots
         .iter()
-        .map(|s| {
-            let p = Path::new(s.trim());
-            p.to_string_lossy().to_string()
-        })
+        .map(|s| PathBuf::from(s.trim()))
         .collect();
 
     for file in files {
         if file.code == "?" {
-            let is_in_root = root_set.contains(&file.parent_dir);
+            let is_in_root = root_set.contains(&PathBuf::from(&file.parent_dir));
 
             if is_in_root {
                 unknown_individual.push(Video {
@@ -196,7 +193,7 @@ fn group_by_code(files: Vec<ScannedFile>, scan_roots: &[String]) -> Vec<Video> {
         .collect();
 
     for (parent_dir, files) in unknown_folder_groups {
-        let folder_name = Path::new(&parent_dir)
+        let folder_name = std::path::Path::new(&parent_dir)
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
