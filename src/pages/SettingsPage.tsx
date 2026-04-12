@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useTauriCommand } from '@/hooks/useTauriCommand'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { usePlayerStore } from '@/stores/playerStore'
-import type { AppSettings, Video } from '@/types'
+import { toast } from 'sonner'
+import type { AppSettings, ScanResult } from '@/types'
 
 const DEFAULT_SETTINGS: AppSettings = { scanFolders: [], playerPath: null, logEnabled: false, logLevel: 'info' }
 
@@ -49,9 +50,13 @@ export default function SettingsPage() {
 
   const handleRescan = async () => {
     setScanning(true)
-    const videos = await run<Video[]>('scan_library', {}, [])
-    useLibraryStore.getState().setVideos(videos)
+    const result = await run<ScanResult>('scan_library', {}, { videos: [], added: 0, removed: 0 })
+    useLibraryStore.getState().setVideos(result.videos)
     setScanning(false)
+    const parts: string[] = []
+    if (result.added > 0) parts.push(`${result.added}개 추가`)
+    if (result.removed > 0) parts.push(`${result.removed}개 제거`)
+    if (parts.length > 0) toast(parts.join(' · '))
   }
 
   return (

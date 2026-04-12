@@ -5,7 +5,9 @@ import ScrapeProgressBar from '@/components/library/ScrapeProgressBar'
 import { useLogStore, type LogEntry } from '@/stores/logStore'
 import { useLibraryStore } from '@/stores/libraryStore'
 import { useTauriCommand } from '@/hooks/useTauriCommand'
-import type { Video, Tag } from '@/types'
+import { Toaster } from '@/components/ui/sonner'
+import { toast } from 'sonner'
+import type { Video, Tag, ScanResult } from '@/types'
 
 export default function AppShell() {
   const { setVideos } = useLibraryStore()
@@ -13,7 +15,13 @@ export default function AppShell() {
 
   // 앱 시작 시 1회 스캔 + 태그 로드
   useEffect(() => {
-    run<Video[]>('scan_library', {}, []).then(setVideos)
+    run<ScanResult>('scan_library', {}, { videos: [], added: 0, removed: 0 }).then((result) => {
+      setVideos(result.videos)
+      const parts: string[] = []
+      if (result.added > 0) parts.push(`${result.added}개 추가`)
+      if (result.removed > 0) parts.push(`${result.removed}개 제거`)
+      if (parts.length > 0) toast(parts.join(' · '))
+    })
     run<Tag[]>('get_tags', {}, []).then((tags) => {
       useLibraryStore.getState().setAllTags(tags)
     })
@@ -93,6 +101,7 @@ export default function AppShell() {
         <Outlet />
       </main>
       <ScrapeProgressBar />
+      <Toaster position="bottom-right" duration={4000} />
     </div>
   )
 }

@@ -34,6 +34,12 @@ export interface SpriteInfo {
   totalFrames: number
 }
 
+export interface ScanResult {
+  videos: Video[]
+  added: number
+  removed: number
+}
+
 export function isUnidentified(video: Video): boolean {
   return video.code === '?' || video.code.startsWith('?:')
 }
