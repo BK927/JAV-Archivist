@@ -1,83 +1,6 @@
-use std::path::{Path, PathBuf};
-use std::process::Command;
-
+use std::path::Path;
+use crate::media;
 use crate::models::SpriteInfo;
-
-/// Resolve the FFmpeg or FFprobe binary path.
-/// Checks next to the executable first (production), then system PATH (development).
-pub fn resolve_binary(name: &str) -> Option<PathBuf> {
-    let exe_name = if cfg!(windows) {
-        format!("{name}.exe")
-    } else {
-        name.to_string()
-    };
-
-    // 1. Next to the executable (production bundle)
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            let path = dir.join(&exe_name);
-            if path.exists() {
-                return Some(path);
-            }
-        }
-    }
-
-    // 2. System PATH (development)
-    let check = Command::new(name)
-        .arg("-version")
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-    if check.map(|s| s.success()).unwrap_or(false) {
-        return Some(PathBuf::from(name));
-    }
-
-    None
-}
-
-/// Check if FFmpeg is available.
-pub fn check(ffmpeg_path: &Option<PathBuf>) -> bool {
-    ffmpeg_path.is_some()
-}
-
-/// Get video duration in seconds using ffprobe.
-fn get_duration(ffprobe_path: &Path, file_path: &str) -> Option<f64> {
-    let output = Command::new(ffprobe_path)
-        .args([
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "csv=p=0",
-            file_path,
-        ])
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    stdout.trim().parse::<f64>().ok()
-}
-
-/// Extract a single frame as JPEG at the given timestamp.
-fn extract_frame(ffmpeg_path: &Path, file_path: &str, timestamp: f64, output_path: &Path) -> bool {
-    let ts = format!("{:.2}", timestamp);
-    let status = Command::new(ffmpeg_path)
-        .args([
-            "-y",
-            "-ss", &ts,
-            "-i", file_path,
-            "-frames:v", "1",
-            "-q:v", "3",
-        ])
-        .arg(output_path)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
-
-    status.map(|s| s.success()).unwrap_or(false)
-}
 
 /// Check if a JPEG file is likely a black frame (< 3KB).
 fn is_black_frame(path: &Path) -> bool {
@@ -89,13 +12,11 @@ fn is_black_frame(path: &Path) -> bool {
 /// Extract a thumbnail for a video. Tries 10%, 25%, 50% of duration.
 /// Returns the path to the generated thumbnail, or None on failure.
 pub fn extract_thumbnail(
-    ffmpeg_path: &Path,
-    ffprobe_path: &Path,
     file_path: &str,
     video_id: &str,
     thumbnails_dir: &Path,
 ) -> Option<String> {
-    let duration = get_duration(ffprobe_path, file_path)?;
+    let duration = media::get_duration(file_path)?;
     if duration <= 0.0 {
         return None;
     }
@@ -105,7 +26,7 @@ pub fn extract_thumbnail(
 
     for pct in percentages {
         let timestamp = duration * pct;
-        if extract_frame(ffmpeg_path, file_path, timestamp, &output_path) && !is_black_frame(&output_path) {
+        if media::extract_frame(file_path, timestamp, &output_path) && !is_black_frame(&output_path) {
             return Some(output_path.to_string_lossy().to_string());
         }
     }
@@ -121,14 +42,12 @@ pub fn extract_thumbnail(
 /// Generate a sprite sheet for seek bar preview.
 /// Returns SpriteInfo or None on failure.
 pub fn generate_sprite_sheet(
-    ffmpeg_path: &Path,
-    ffprobe_path: &Path,
     file_path: &str,
     video_id: &str,
     part_index: u32,
     sprites_dir: &Path,
 ) -> Option<SpriteInfo> {
-    let duration = get_duration(ffprobe_path, file_path)?;
+    let duration = media::get_duration(file_path)?;
     if duration <= 0.0 {
         return None;
     }
@@ -136,7 +55,6 @@ pub fn generate_sprite_sheet(
     let interval = (duration / 100.0).ceil().max(10.0) as u32;
     let total_frames = (duration / interval as f64).ceil() as u32;
     let columns: u32 = 10;
-    let rows = (total_frames as f64 / columns as f64).ceil() as u32;
 
     let sprite_path = sprites_dir.join(format!("{video_id}_part{part_index}.jpg"));
     let meta_path = sprites_dir.join(format!("{video_id}_part{part_index}.json"));
@@ -147,36 +65,67 @@ pub fn generate_sprite_sheet(
         return serde_json::from_str::<SpriteInfo>(&json).ok();
     }
 
-    let vf = format!("fps=1/{interval},scale=160:-1,tile={columns}x{rows}");
-    let status = Command::new(ffmpeg_path)
-        .args([
-            "-y",
-            "-i", file_path,
-            "-vf", &vf,
-            "-q:v", "5",
-        ])
-        .arg(&sprite_path)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status();
+    // Extract individual frames to a temp dir
+    let temp_dir = std::env::temp_dir().join(format!("sprites_{video_id}_{part_index}"));
+    let _ = std::fs::create_dir_all(&temp_dir);
 
-    if !status.map(|s| s.success()).unwrap_or(false) || !sprite_path.exists() {
+    let mut frame_paths: Vec<std::path::PathBuf> = Vec::new();
+    for i in 0..total_frames {
+        let timestamp = i as f64 * interval as f64;
+        let frame_path = temp_dir.join(format!("frame_{:04}.jpg", i));
+        if media::extract_frame(file_path, timestamp, &frame_path) {
+            frame_paths.push(frame_path);
+        }
+    }
+
+    if frame_paths.is_empty() {
+        let _ = std::fs::remove_dir_all(&temp_dir);
         return None;
     }
 
-    // Read actual frame dimensions from the sprite image
-    let (sprite_w, sprite_h) = image_dimensions(&sprite_path)?;
-    let frame_w = sprite_w / columns;
-    let frame_h = sprite_h / rows;
+    // Tile frames into a sprite sheet
+    let frame_w: u32 = 160;
+    let first_img = image::open(&frame_paths[0]).ok()?;
+    let aspect = first_img.height() as f64 / first_img.width() as f64;
+    let frame_h = (frame_w as f64 * aspect).round() as u32;
+
+    let actual_rows = (frame_paths.len() as f64 / columns as f64).ceil() as u32;
+    let sprite_w = frame_w * columns;
+    let sprite_h = frame_h * actual_rows;
+    let mut sprite = image::RgbImage::new(sprite_w, sprite_h);
+
+    for (idx, path) in frame_paths.iter().enumerate() {
+        if let Ok(img) = image::open(path) {
+            let resized = img.resize_exact(frame_w, frame_h, image::imageops::FilterType::Triangle);
+            let col = (idx as u32) % columns;
+            let row = (idx as u32) / columns;
+            image::imageops::overlay(
+                &mut sprite,
+                &resized.to_rgb8(),
+                (col * frame_w) as i64,
+                (row * frame_h) as i64,
+            );
+        }
+    }
+
+    let dyn_img = image::DynamicImage::ImageRgb8(sprite);
+    dyn_img.save_with_format(&sprite_path, image::ImageFormat::Jpeg).ok()?;
+
+    // Clean up temp dir
+    let _ = std::fs::remove_dir_all(&temp_dir);
+
+    if !sprite_path.exists() {
+        return None;
+    }
 
     let info = SpriteInfo {
         url: sprite_path.to_string_lossy().to_string(),
         width: frame_w,
         height: frame_h,
         columns,
-        rows,
+        rows: actual_rows,
         interval,
-        total_frames,
+        total_frames: frame_paths.len() as u32,
     };
 
     // Cache metadata
@@ -247,14 +196,12 @@ pub fn is_low_quality_image(path: &Path) -> bool {
 /// Extract N evenly-spaced frames from a video as JPEG sample images.
 /// Returns the paths of successfully extracted frames.
 pub fn extract_sample_images(
-    ffmpeg_path: &Path,
-    ffprobe_path: &Path,
     file_path: &str,
     video_id: &str,
     samples_dir: &Path,
     count: u32,
 ) -> Vec<String> {
-    let duration = match get_duration(ffprobe_path, file_path) {
+    let duration = match media::get_duration(file_path) {
         Some(d) if d > 0.0 => d,
         _ => return Vec::new(),
     };
@@ -267,7 +214,7 @@ pub fn extract_sample_images(
         let filename = format!("{}_sample_{:02}.jpg", video_id, i + 1);
         let output_path = samples_dir.join(&filename);
 
-        if extract_frame(ffmpeg_path, file_path, timestamp, &output_path)
+        if media::extract_frame(file_path, timestamp, &output_path)
             && !is_black_frame(&output_path)
         {
             paths.push(output_path.to_string_lossy().to_string());
