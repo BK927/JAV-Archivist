@@ -851,6 +851,41 @@ pub fn set_thumbnail_path(conn: &Connection, video_id: &str, path: &str) -> Resu
     Ok(())
 }
 
+/// Assign a new code to a video. If a video with that code already exists,
+/// merge files into the existing video and delete the old one.
+/// Returns the final video ID.
+pub fn assign_code(conn: &Connection, video_id: &str, new_code: &str) -> Result<String> {
+    // Check if a video with the new code already exists
+    let existing_id: Option<String> = conn
+        .query_row(
+            "SELECT id FROM videos WHERE code = ?1 AND id != ?2",
+            params![new_code, video_id],
+            |row| row.get(0),
+        )
+        .ok();
+
+    if let Some(target_id) = existing_id {
+        // Merge: move files from old video to existing one
+        conn.execute(
+            "UPDATE video_files SET video_id = ?1 WHERE video_id = ?2",
+            params![target_id, video_id],
+        )?;
+        // Delete the old video record
+        conn.execute("DELETE FROM video_tags WHERE video_id = ?1", [video_id])?;
+        conn.execute("DELETE FROM video_actors WHERE video_id = ?1", [video_id])?;
+        conn.execute("DELETE FROM sample_images WHERE video_id = ?1", [video_id])?;
+        conn.execute("DELETE FROM videos WHERE id = ?1", [video_id])?;
+        Ok(target_id)
+    } else {
+        // No collision: update code and reset scrape status
+        conn.execute(
+            "UPDATE videos SET code = ?1, scrape_status = 'not_scraped', scraped_at = NULL, retry_count = 0 WHERE id = ?2",
+            params![new_code, video_id],
+        )?;
+        Ok(video_id.to_string())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

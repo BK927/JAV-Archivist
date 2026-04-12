@@ -9,6 +9,7 @@ import { useLibraryStore } from '@/stores/libraryStore'
 import { isUnidentified, displayCode } from '@/types'
 import type { Video, Actor } from '@/types'
 import { assetUrl, cn } from '@/lib/utils'
+import { invoke } from '@tauri-apps/api/core'
 
 interface VideoMetadataProps {
   video: Video
@@ -26,6 +27,8 @@ export default function VideoMetadata({ video }: VideoMetadataProps) {
   const navigate = useNavigate()
   const [actorDetails, setActorDetails] = useState<Actor[]>([])
   const [isScraping, setIsScraping] = useState(false)
+  const [newCode, setNewCode] = useState('')
+  const [assigning, setAssigning] = useState(false)
 
   useEffect(() => {
     run<Actor[]>('get_actors', {}, []).then((all) => {
@@ -57,6 +60,24 @@ export default function VideoMetadata({ video }: VideoMetadataProps) {
     }
   }
 
+  const handleAssignCode = async () => {
+    const trimmed = newCode.trim().toUpperCase()
+    if (!trimmed) return
+    setAssigning(true)
+    try {
+      const updated = await invoke<Video>('assign_code', {
+        videoId: video.id,
+        newCode: trimmed,
+      })
+      // Navigate to the updated video (ID may have changed due to merge)
+      window.location.href = `/library/${updated.id}`
+    } catch (e) {
+      console.error('assign_code failed:', e)
+    } finally {
+      setAssigning(false)
+    }
+  }
+
   return (
     <div className="flex-1 space-y-3">
       {/* Code + scrape status */}
@@ -82,6 +103,25 @@ export default function VideoMetadata({ video }: VideoMetadataProps) {
             </span>
           )}
         </div>
+        {isUnidentified(video) && (
+          <div className="flex items-center gap-2 mt-2">
+            <input
+              type="text"
+              placeholder="코드 입력 (예: ABC-123)"
+              value={newCode}
+              onChange={(e) => setNewCode(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAssignCode()}
+              className="text-xs border border-border rounded px-2 py-1 bg-background text-foreground w-40"
+            />
+            <button
+              onClick={handleAssignCode}
+              disabled={assigning || !newCode.trim()}
+              className="text-xs px-2 py-1 rounded bg-primary text-primary-foreground disabled:opacity-50"
+            >
+              {assigning ? '...' : '할당'}
+            </button>
+          </div>
+        )}
         <h1 className="text-lg font-semibold leading-snug">{video.title}</h1>
       </div>
 

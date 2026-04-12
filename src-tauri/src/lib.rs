@@ -559,6 +559,18 @@ fn check_ffmpeg(ffmpeg_path: tauri::State<'_, FfmpegPath>) -> bool {
     ffmpeg::check(&ffmpeg_path.0)
 }
 
+#[tauri::command]
+fn assign_code(
+    db: tauri::State<'_, DbPath>,
+    video_id: String,
+    new_code: String,
+) -> Result<Video, String> {
+    tracing::info!("cmd: assign_code video_id={} new_code={}", video_id, new_code);
+    let conn = db::open(db.0.to_str().unwrap()).map_err(|e| e.to_string())?;
+    let final_id = db::assign_code(&conn, &video_id, &new_code).map_err(|e| e.to_string())?;
+    db::get_video_by_id(&conn, &final_id).map_err(|e| e.to_string())
+}
+
 fn start_auto_scrape(app: &tauri::AppHandle, db_path: &std::path::Path, thumbnails_dir: &std::path::Path, actors_dir: &std::path::Path, samples_dir: &std::path::Path, cancel_flag: Arc<AtomicBool>, scrape_running: Arc<AtomicBool>) {
     // Skip if a scrape (manual or auto) is already running
     if scrape_running.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
@@ -836,6 +848,7 @@ pub fn run() {
             get_makers,
             get_sample_images,
             check_ffmpeg,
+            assign_code,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
